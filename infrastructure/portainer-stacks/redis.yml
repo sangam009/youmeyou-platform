@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  codaloo-redis:
+    image: redis:7.2-alpine
+    container_name: codaloo-redis-${STACK_NAME:-prod}
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - codaloo-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    labels:
+      - "com.youmeyou.service=redis-cache"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  codaloo-network:
+    external: true 

@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  designer-service:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - MYSQL_HOST=designer-mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=password
+      - MYSQL_DATABASE=designmicroservice
+      - MONGODB_URI=mongodb://designer-mongodb:27017
+      - MONGODB_DB=designmicroservice
+    depends_on:
+      - designer-mysql
+      - designer-mongodb
+
+  designer-mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=designmicroservice
+    volumes:
+      - designer-mysql-data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "3308:3306"
+
+  designer-mongodb:
+    image: mongo:latest
+    volumes:
+      - designer-mongodb-data:/data/db
+    ports:
+      - "27017:27017"
+
+volumes:
+  designer-mysql-data:
+  designer-mongodb-data: 

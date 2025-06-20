@@ -1,0 +1,161 @@
+{
+  "info": {
+    "name": "Design Microservice API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "List Workspaces",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:4000/workspaces"
+          }
+        },
+        {
+          "name": "Create Workspace",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:4000/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"New Workspace\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Switch Workspace",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:4000/workspaces/1/switch"
+          }
+        },
+        {
+          "name": "Invite to Workspace",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:4000/workspaces/1/invite",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"user@example.com\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:4000/workspaces/1/projects"
+          }
+        },
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:4000/workspaces/1/projects",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"New Project\", \"template\": \"API\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Rename Project",
+          "request": {
+            "method": "PATCH",
+            "url": "http://localhost:4000/projects/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"Updated Project Name\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:4000/projects/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Templates",
+      "item": [
+        {
+          "name": "List Templates",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:4000/templates"
+          }
+        },
+        {
+          "name": "Create Template",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:4000/templates",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"New Template\", \"projectId\": \"1\", \"data\": {\"nodes\": [], \"edges\": []}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Template",
+          "request": {
+            "method": "PATCH",
+            "url": "http://localhost:4000/templates/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"Updated Template\", \"data\": {\"nodes\": [], \"edges\": []}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Template",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:4000/templates/1"
+          }
+        }
+      ]
+    }
+  ]
+} 

@@ -1,0 +1,365 @@
+Generic Payment Module - Architecture & Specification (Node.js + React)
+
+Overview:
+This document specifies the design of a modular, gateway-agnostic payment module that supports both one-time and subscription payments. It is designed to be reusable, pluggable, and easy to extend.
+
+Target Stack:
+- Backend: Node.js (Express)
+- Frontend: React
+- Supported Gateways: Razorpay (initial), pluggable for others (PhonePe, Cashfree, etc.)
+
+1. API Specification
+
+Authorization:
+- All API endpoints require user authentication via a login service.
+- Role-based access control:
+  - Only users with role "admin" can access /create-plan endpoint.
+  - Only users with role "user" can access /create-order and /subscribe endpoints.
+
+POST /api/payment/create-order
+Description: Creates a one-time payment order
+Request Body:
+- amount: number (in rupees)
+- currency: string (default: 'INR')
+- gateway: string (e.g., 'razorpay')
+- method: string (optional, e.g., 'upi', 'card')
+- flow: string (optional, e.g., 'intent', 'collect')
+Response:
+- order_id, amount, currency
+- intent_url (if UPI intent)
+- collect_request_id (if UPI collect)
+
+Code Snippet:
+```js
+const createOrder = async (req, res) => {
+  const { amount, gateway, method, flow } = req.body;
+  const order = await Gateway[gateway].createOrder({ amount, method, flow });
+  res.json(order);
+};
+```
+
+POST /api/payment/create-plan
+Description: Admin endpoint to create a new subscription plan
+Request Body:
+- amount: number
+- period: string ('monthly', 'yearly')
+- interval: number
+- gateway: string
+- metadata: JSON (optional)
+Response:
+- plan_id, details
+
+POST /api/payment/subscribe
+Description: Creates a subscription for a customer based on a given plan
+Request Body:
+- planId: string
+- gateway: string
+- customer: 
+  - name: string
+  - email: string
+  - contact: string
+Response:
+- subscription_id, status
+
+POST /api/payment/webhook/:gateway
+Description: Handles payment or subscription webhooks from the respective gateway
+
+POST /api/payment/verify-payment
+Description: Called from client after payment completion to verify status
+Request Body:
+- order_id: string
+- gateway: string
+Response:
+- status: success | failed | pending | expired
+- payment: object (optional)
+
+GET /api/payment/status/:order_id
+Description: Deprecated. Polling method for status (to be replaced by backend push)
+
+GET /api/payment/details/:payment_id
+Description: Returns the payment details including effective status
+Logic:
+- If stored status is pending or created and current time > expires_at, return status as expired
+Response:
+- payment: full payment object with computed status
+
+2. Database Schema
+
+Table: plans
+- id (PK)
+- plan_id (gateway identifier)
+- name
+- amount
+- interval
+- period
+- gateway
+- metadata (JSON)
+
+Table: subscriptions
+- id (PK)
+- user_id (FK)
+- plan_id (FK)
+- subscription_id (gateway identifier)
+- status (active, cancelled, failed, pending)
+- gateway
+- start_date
+- next_billing_date
+
+Table: payments
+- id (PK)
+- order_id (gateway identifier)
+- subscription_id (nullable, FK to subscriptions.subscription_id)
+- amount
+- status (created, pending, success, failed, expired, cancelled)
+- user_id (FK)
+- gateway
+- type ('one-time' | 'subscription')
+- created_at
+- updated_at
+- expires_at (for tracking payment timeouts)
+- error_message (nullable)
+- retry_count (int)
+- last_retry_at (timestamp)
+- refund_status (none, initiated, completed)
+- transaction_id (internal unique ID)
+
+SQL:
+```sql
+CREATE TABLE plans (
+  id SERIAL PRIMARY KEY,
+  plan_id VARCHAR(255) NOT NULL,
+  name VARCHAR(255),
+  amount INT NOT NULL,
+  interval INT NOT NULL,
+  period VARCHAR(50) NOT NULL,
+  gateway VARCHAR(100) NOT NULL,
+  metadata JSONB
+);
+
+CREATE TABLE subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL,
+  plan_id INT NOT NULL,
+  subscription_id VARCHAR(255) NOT NULL,
+  status VARCHAR(50) CHECK (status IN ('active', 'cancelled', 'failed', 'pending')),
+  gateway VARCHAR(100) NOT NULL,
+  start_date TIMESTAMP NOT NULL,
+  next_billing_date TIMESTAMP,
+  FOREIGN KEY (plan_id) REFERENCES plans(id)
+);
+
+CREATE TABLE payments (
+  id SERIAL PRIMARY KEY,
+  order_id VARCHAR(255),
+  subscription_id VARCHAR(255),
+  amount INT NOT NULL,
+  status VARCHAR(50) CHECK (status IN ('created', 'pending', 'success', 'failed', 'expired', 'cancelled')),
+  user_id INT NOT NULL,
+  gateway VARCHAR(100) NOT NULL,
+  type VARCHAR(50) CHECK (type IN ('one-time', 'subscription')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP,
+  error_message TEXT,
+  retry_count INT DEFAULT 0,
+  last_retry_at TIMESTAMP,
+  refund_status VARCHAR(50) CHECK (refund_status IN ('none', 'initiated', 'completed')),
+  transaction_id UUID NOT NULL UNIQUE
+);
+```
+
+3. Data Flow
+
+One-Time Payment Flow:
+1. React sends payment request to /api/payment/create-order
+2. Backend creates order via gateway SDK
+```js
+// Razorpay handler (example)
+async function createOrder({ amount, flow }) {
+  const order = await razorpay.orders.create({ amount, currency: 'INR', payment_capture: 1 });
+  if (flow === 'intent') {
+    const intent_url = `upi://pay?pa=merchant@upi&pn=MerchantName&am=${amount}`;
+    return { ...order, intent_url };
+  }
+  return order;
+}
+```
+3. Frontend renders gateway's checkout using the order_id or redirects using intent_url
+4. User completes payment
+5. Frontend calls /verify-payment to update status (single check)
+6. If status not final, client shows "payment is in process" message
+7. Backend schedules CRON or webhook to handle eventual update
+8. Backend sends real-time updates via Firebase to subscribed clients
+
+4. UI Component Flow (React)
+
+Components:
+- PaymentButton: Initiates one-time payment
+- SubscribeButton: Initiates subscription based on selected plan
+- PaymentStatus: Displays result (success/failure)
+
+Code Snippet:
+```jsx
+const PaymentButton = ({ amount }) => {
+  const handleClick = async () => {
+    const res = await fetch('/api/payment/create-order', {
+      method: 'POST',
+      body: JSON.stringify({ amount, gateway: 'razorpay', flow: 'intent' })
+    });
+    const { intent_url } = await res.json();
+    window.location.href = intent_url; // for UPI intent
+  };
+
+  return <button onClick={handleClick}>Pay Now</button>;
+};
+```
+
+5. Push-Based Payment Status (Replacing Polling)
+
+- Client subscribes to Firebase collection/document based on order_id
+- Backend updates status in Firebase after:
+  - immediate verify-payment call
+  - webhook processing
+  - scheduled CRON or reconciliation update
+- Client store/state updates accordingly across screens
+
+Firebase Update Example:
+```js
+const pushUpdateToFirebase = async (orderId, status) => {
+  const ref = firebase.firestore().collection('payments').doc(orderId);
+  await ref.set({ status, updatedAt: Date.now() }, { merge: true });
+};
+```
+
+6. Reconciliation & Refund Strategy
+
+- Daily reconciliation job fetches payment data from PSP (CSV/API)
+- Compares with internal DB:
+  - mismatched statuses
+  - missing records
+  - refunds initiated externally
+- If refund needed:
+  - Update payment record
+  - Initiate refund via API or PSP panel
+  - Update `refund_status` to reflect state
+- Scheduled CRON jobs also perform similar checks at intervals
+- Both CRON and reconciliation are authorized to trigger refunds and update records
+
+Refund Example:
+```js
+const initiateRefund = async (orderId) => {
+  const payment = await db.get('payments', { order_id: orderId });
+  if (payment.status === 'success') {
+    await gateway.refund(orderId);
+    await db.update('payments', { refund_status: 'initiated' }, { order_id: orderId });
+  }
+};
+```
+
+7. Expiry Handling
+
+- Each created payment has an expires_at timestamp (default: 60 minutes)
+- CRON job checks for expired payments every 15 minutes
+- If payment not completed, mark as expired in DB
+- /payment/details computes effective status using expiry logic
+
+8. Webhook Handling (Genericized)
+
+- Define a webhook controller that receives POST /api/payment/webhook/:gateway
+- Use a webhookHandlerMap (gateway → handler)
+- Each handler parses and validates the incoming webhook payload (signature, event type)
+- Events handled: payment.success, payment.failed, subscription.charged, subscription.cancelled, etc.
+
+Example Handler:
+```js
+const handleRazorpayWebhook = (req) => {
+  const event = req.body.event;
+  switch (event) {
+    case 'payment.captured':
+      return { status: 'success', type: 'payment', id: req.body.payload.payment.entity.id };
+    case 'payment.failed':
+      return { status: 'failed', error: req.body.payload.payment.entity.error_description };
+  }
+};
+```
+
+Generic Webhook Processor:
+```js
+const updatePaymentStatus = async ({ status, id, type, error }) => {
+  await db.update('payments', {
+    status,
+    error_message: error || null,
+    updated_at: new Date()
+  }, { order_id: id });
+};
+```
+
+9. Diagrams
+
+A. Flowchart:
+```
+User → React → Backend → Gateway API → Checkout UI
+  ↓            ↓               ↓            ↓
+ verify-payment (sync)     webhook → update DB
+      ↓                        ↓
+    Firebase push         CRON fallback check
+```
+
+B. Sequence Diagram:
+```
+User       → React       : Click Pay/Subscribe
+React      → Node        : create-order / subscribe
+Node       → Gateway SDK: create order/subscription
+Gateway SDK→ React       : Return id
+React      → Checkout UI : Open Modal
+User       → Checkout UI : Complete Payment
+React      → Node        : verify-payment (once)
+Node       → Firebase    : Push update
+Gateway    → Webhook     : Send event
+Webhook    → Node        : Handle event
+Node       → Firebase    : Push update
+CRON/Reconciliation→ Node: Retry/check/update
+Node       → Firebase    : Push update
+```
+
+C. Component Diagram:
+```
++------------------+
+| React Frontend   |
++--------+---------+
+         |
+         v
++------------------+
+|  API Layer       |
++--------+---------+
+         |
+         v
++-----------------------+
+| Gateway Manager (Node)|
++----+------------+-----+
+     |            |
+     v            v
++---------+  +------------+
+| Razorpay|  | PhonePe    |
+| Handler |  | Handler    |
++---------+  +------------+
+     |            |
+     v            v
++---------+  +------------+
+| SDK/API |  | SDK/API    |
++---------+  +------------+
+```
+
+D. Entity Relationship Diagram:
+```
++--------+      +---------------+      +-------+
+| Users  |◄────►| Subscriptions |─────►| Plans |
++--------+      +---------------+      +-------+
+    ▲                  ▲
+    |                  |
+    └──────────────┬───┘
+                   ▼
+              +---------+
+              | Payments|
+              +---------+
+```

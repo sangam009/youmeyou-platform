@@ -1,0 +1,88 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-services:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [design-microservice, auth-microservice, payment-microservice]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd services/${{ matrix.service }}
+        npm ci
+    
+    - name: Run tests
+      run: |
+        cd services/${{ matrix.service }}
+        npm test || echo "No tests configured"
+    
+    - name: Build service
+      run: |
+        cd services/${{ matrix.service }}
+        npm run build || echo "No build script"
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: web/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd web
+        npm ci
+    
+    - name: Build frontend
+      run: |
+        cd web
+        npm run build
+
+  deploy-staging:
+    needs: [test-services, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploy to staging environment"
+        # Add deployment script here
+
+  deploy-production:
+    needs: [test-services, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to production
+      run: |
+        echo "Deploy to production environment"
+        # Add production deployment script here

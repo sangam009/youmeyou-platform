@@ -1,0 +1,687 @@
+{
+	"info": {
+		"_postman_id": "65f9e7d0-f90b-40f2-9cde-8f65c491f824",
+		"name": "Payment Microservice API",
+		"description": "A collection of API endpoints for the Payment Microservice supporting Razorpay, PhonePe, and Cashfree payment gateways.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Check if the payment service is running"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/health",
+									"host": ["{{baseUrl}}"],
+									"path": ["health"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Payment service is running\",\n    \"timestamp\": \"2023-05-03T12:00:00.000Z\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Razorpay Payments",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 1000,\n    \"currency\": \"INR\",\n    \"gateway\": \"razorpay\",\n    \"method\": \"upi\",\n    \"flow\": \"intent\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/create-order",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "create-order"]
+						},
+						"description": "Creates a Razorpay payment order"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"amount\": 1000,\n    \"currency\": \"INR\",\n    \"gateway\": \"razorpay\",\n    \"method\": \"upi\",\n    \"flow\": \"intent\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/create-order",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "create-order"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"payment\": {\n        \"order_id\": \"order_123456789\",\n        \"amount\": 1000,\n        \"currency\": \"INR\",\n        \"user_id\": \"user-uuid-123\",\n        \"gateway\": \"razorpay\",\n        \"status\": \"created\",\n        \"created_at\": \"2023-05-03T12:00:00.000Z\",\n        \"transaction_id\": \"txn_abc123456789\",\n        \"intent_url\": \"upi://pay?pa=merchant@upi&pn=MerchantName&am=1000\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Verify Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"order_123456789\",\n    \"razorpay_payment_id\": \"pay_123456789\",\n    \"razorpay_order_id\": \"order_123456789\",\n    \"razorpay_signature\": \"signature_hash\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/verify-payment",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "verify-payment"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "PhonePe Payments",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 1000,\n    \"currency\": \"INR\",\n    \"gateway\": \"phonepe\",\n    \"method\": \"upi\",\n    \"flow\": \"intent\",\n    \"mobile_number\": \"1234567890\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/create-order",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "create-order"]
+						},
+						"description": "Creates a PhonePe payment order"
+					}
+				},
+				{
+					"name": "Verify Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"order_123456789\",\n    \"merchant_transaction_id\": \"txn_123456789\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/verify-payment",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "verify-payment"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Cashfree Payments",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 1000,\n    \"currency\": \"INR\",\n    \"gateway\": \"cashfree\",\n    \"method\": \"upi\",\n    \"flow\": \"intent\",\n    \"customer_id\": \"CUST_123\",\n    \"customer_email\": \"test@example.com\",\n    \"customer_phone\": \"1234567890\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/create-order",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "create-order"]
+						},
+						"description": "Creates a Cashfree payment order"
+					}
+				},
+				{
+					"name": "Verify Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"order_123456789\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/verify-payment",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "verify-payment"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Webhooks",
+			"item": [
+				{
+					"name": "Razorpay Webhook",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Razorpay-Signature",
+								"value": "{{razorpay_webhook_signature}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"event\": \"payment.captured\",\n    \"payload\": {\n        \"payment\": {\n            \"entity\": {\n                \"id\": \"pay_123456789\",\n                \"order_id\": \"order_123456789\",\n                \"status\": \"captured\"\n            }\n        }\n    }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/webhook/razorpay",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "webhook", "razorpay"]
+						}
+					}
+				},
+				{
+					"name": "PhonePe Webhook",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"merchantTransactionId\": \"txn_123456789\",\n    \"state\": \"COMPLETED\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/webhook/phonepe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "webhook", "phonepe"]
+						}
+					}
+				},
+				{
+					"name": "Cashfree Webhook",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"signature\": \"valid_signature\",\n    \"data\": {\n        \"order\": {\n            \"order_id\": \"order_123456789\",\n            \"order_status\": \"PAID\"\n        }\n    }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/webhook/cashfree",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "webhook", "cashfree"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Payment Status",
+			"item": [
+				{
+					"name": "Get Payment Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/status/:order_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "status", ":order_id"],
+							"variable": [
+								{
+									"key": "order_id",
+									"value": "order_123456789",
+									"description": "The order ID to check"
+								}
+							]
+						},
+						"description": "Gets the status of a payment (deprecated)"
+					}
+				},
+				{
+					"name": "Get Payment Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/details/:payment_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "details", ":payment_id"],
+							"variable": [
+								{
+									"key": "payment_id",
+									"value": "txn_abc123456789",
+									"description": "The transaction ID or payment ID"
+								}
+							]
+						},
+						"description": "Gets detailed payment information"
+					}
+				}
+			]
+		},
+		{
+			"name": "Subscription Management",
+			"item": [
+				{
+					"name": "Create Plan",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Premium Plan\",\n    \"description\": \"Premium subscription plan\",\n    \"amount\": 999,\n    \"currency\": \"INR\",\n    \"interval\": \"month\",\n    \"interval_count\": 1,\n    \"features\": [\"feature1\", \"feature2\"],\n    \"trial_period_days\": 7\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/create-plan",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "create-plan"]
+						},
+						"description": "Creates a new subscription plan (Admin only)"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Premium Plan\",\n    \"description\": \"Premium subscription plan\",\n    \"amount\": 999,\n    \"currency\": \"INR\",\n    \"interval\": \"month\",\n    \"interval_count\": 1,\n    \"features\": [\"feature1\", \"feature2\"],\n    \"trial_period_days\": 7\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/create-plan",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "create-plan"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"plan\": {\n        \"id\": \"plan_123456789\",\n        \"name\": \"Premium Plan\",\n        \"amount\": 999,\n        \"currency\": \"INR\",\n        \"interval\": \"month\",\n        \"interval_count\": 1,\n        \"features\": [\"feature1\", \"feature2\"],\n        \"trial_period_days\": 7,\n        \"created_at\": \"2023-05-03T12:00:00.000Z\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Subscribe to Plan",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"plan_id\": \"plan_123456789\",\n    \"payment_method\": \"upi\",\n    \"gateway\": \"razorpay\",\n    \"customer_details\": {\n        \"email\": \"user@example.com\",\n        \"phone\": \"1234567890\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/subscribe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "subscribe"]
+						},
+						"description": "Subscribe to a plan"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"plan_id\": \"plan_123456789\",\n    \"payment_method\": \"upi\",\n    \"gateway\": \"razorpay\",\n    \"customer_details\": {\n        \"email\": \"user@example.com\",\n        \"phone\": \"1234567890\"\n    }\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/subscribe",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "subscribe"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"subscription\": {\n        \"id\": \"sub_123456789\",\n        \"plan_id\": \"plan_123456789\",\n        \"status\": \"active\",\n        \"current_period_start\": \"2023-05-03T12:00:00.000Z\",\n        \"current_period_end\": \"2023-06-03T12:00:00.000Z\",\n        \"trial_end\": \"2023-05-10T12:00:00.000Z\",\n        \"created_at\": \"2023-05-03T12:00:00.000Z\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Subscription Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/subscription/:subscription_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "subscription", ":subscription_id"],
+							"variable": [
+								{
+									"key": "subscription_id",
+									"value": "sub_123456789",
+									"description": "The subscription ID to fetch details for"
+								}
+							]
+						},
+						"description": "Get details of a subscription"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/subscription/:subscription_id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "subscription", ":subscription_id"],
+									"variable": [
+										{
+											"key": "subscription_id",
+											"value": "sub_123456789"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"subscription\": {\n        \"id\": \"sub_123456789\",\n        \"plan_id\": \"plan_123456789\",\n        \"status\": \"active\",\n        \"current_period_start\": \"2023-05-03T12:00:00.000Z\",\n        \"current_period_end\": \"2023-06-03T12:00:00.000Z\",\n        \"trial_end\": \"2023-05-10T12:00:00.000Z\",\n        \"created_at\": \"2023-05-03T12:00:00.000Z\",\n        \"payment_history\": [\n            {\n                \"payment_id\": \"pay_123456789\",\n                \"amount\": 999,\n                \"status\": \"succeeded\",\n                \"created_at\": \"2023-05-03T12:00:00.000Z\"\n            }\n        ]\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cancel_at_period_end\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/subscription/:subscription_id/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "subscription", ":subscription_id", "cancel"],
+							"variable": [
+								{
+									"key": "subscription_id",
+									"value": "sub_123456789",
+									"description": "The subscription ID to cancel"
+								}
+							]
+						},
+						"description": "Cancel a subscription"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"cancel_at_period_end\": true\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/subscription/:subscription_id/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "subscription", ":subscription_id", "cancel"],
+									"variable": [
+										{
+											"key": "subscription_id",
+											"value": "sub_123456789"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"subscription\": {\n        \"id\": \"sub_123456789\",\n        \"status\": \"active\",\n        \"cancel_at_period_end\": true,\n        \"current_period_end\": \"2023-06-03T12:00:00.000Z\"\n    }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Refund Management",
+			"item": [
+				{
+					"name": "Initiate Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"payment_id\": \"pay_123456789\",\n    \"amount\": 1000,\n    \"reason\": \"customer_request\",\n    \"notes\": \"Customer requested refund\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/refund",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "refund"]
+						},
+						"description": "Initiate a refund for a payment"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"payment_id\": \"pay_123456789\",\n    \"amount\": 1000,\n    \"reason\": \"customer_request\",\n    \"notes\": \"Customer requested refund\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/refund",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "refund"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"refund\": {\n        \"id\": \"ref_123456789\",\n        \"payment_id\": \"pay_123456789\",\n        \"amount\": 1000,\n        \"status\": \"pending\",\n        \"reason\": \"customer_request\",\n        \"notes\": \"Customer requested refund\",\n        \"created_at\": \"2023-05-03T12:00:00.000Z\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Refund Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/payment/refund/:refund_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payment", "refund", ":refund_id"],
+							"variable": [
+								{
+									"key": "refund_id",
+									"value": "ref_123456789",
+									"description": "The refund ID to check status for"
+								}
+							]
+						},
+						"description": "Get status of a refund"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/payment/refund/:refund_id",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "payment", "refund", ":refund_id"],
+									"variable": [
+										{
+											"key": "refund_id",
+											"value": "ref_123456789"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"refund\": {\n        \"id\": \"ref_123456789\",\n        \"payment_id\": \"pay_123456789\",\n        \"amount\": 1000,\n        \"status\": \"succeeded\",\n        \"reason\": \"customer_request\",\n        \"notes\": \"Customer requested refund\",\n        \"created_at\": \"2023-05-03T12:00:00.000Z\",\n        \"processed_at\": \"2023-05-03T12:05:00.000Z\"\n    }\n}"
+						}
+					]
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [""]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [""]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL for local development"
+		},
+		{
+			"key": "productionUrl",
+			"value": "https://payment.youmeyou.ai",
+			"type": "string",
+			"description": "Base URL for production"
+		}
+	]
+} 

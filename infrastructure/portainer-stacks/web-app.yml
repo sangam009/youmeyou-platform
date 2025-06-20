@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  codaloo-web:
+    image: youmeyou/codaloo-web:${VERSION:-latest}
+    container_name: codaloo-web-${STACK_NAME:-prod}
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_PUBLIC_API_URL=https://youmeyou.ai/api
+      - NEXT_PUBLIC_AUTH_API_URL=https://auth.youmeyou.ai
+      - NEXT_PUBLIC_DESIGN_API_URL=https://design.youmeyou.ai
+      - NEXT_PUBLIC_PAYMENT_API_URL=https://payment.youmeyou.ai
+      - NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY}
+      - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+      - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+      - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+      - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+      - NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
+      - NEXT_PUBLIC_DOMAIN=youmeyou.ai
+      - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    networks:
+      - codaloo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    labels:
+      - "com.youmeyou.service=web-app"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+      - "com.youmeyou.domain=youmeyou.ai"
+
+networks:
+  codaloo-network:
+    external: true 

@@ -1,0 +1,74 @@
+.payment-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  transition: all 0.3s ease-in-out;
+}
+
+.payment-status.success {
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+
+.payment-status.failed {
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+}
+
+.payment-status.pending {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+}
+
+.payment-status-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.payment-status.success .payment-status-icon {
+  color: #28a745;
+}
+
+.payment-status.failed .payment-status-icon {
+  color: #dc3545;
+}
+
+.payment-status.pending .payment-status-icon {
+  color: #ffc107;
+  animation: spin 1s linear infinite;
+}
+
+.payment-status-message {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.payment-status-error {
+  font-size: 14px;
+  color: #dc3545;
+  text-align: center;
+  margin-top: 8px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+} 

@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  design-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=development
+        - PORT=4000
+    container_name: design-service-local
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - env.development.txt
+    environment:
+      - NODE_ENV=development
+      - MYSQL_HOST=design-mysql-local
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=password
+      - MYSQL_DATABASE=designmicroservice
+      - MONGODB_URI=mongodb://design-mongodb-local:27017
+      - MONGODB_DB=designmicroservice
+      - REDIS_HOST=design-redis-local
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=localpassword
+    depends_on:
+      design-mysql-local:
+        condition: service_healthy
+      design-mongodb-local:
+        condition: service_healthy
+      design-redis-local:
+        condition: service_healthy
+    networks:
+      - design-network
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  design-mysql-local:
+    image: mysql:8.0
+    container_name: design-mysql-local
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=designmicroservice
+    ports:
+      - "3308:3306"
+    volumes:
+      - design-mysql-local-data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - design-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  design-mongodb-local:
+    image: mongo:7.0
+    container_name: design-mongodb-local
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - design-mongodb-local-data:/data/db
+      - design-mongodb-local-config:/data/configdb
+    networks:
+      - design-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  design-redis-local:
+    image: redis:alpine
+    container_name: design-redis-local
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass localpassword
+    ports:
+      - "6380:6379"
+    volumes:
+      - design-redis-local-data:/data
+    networks:
+      - design-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "localpassword", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  design-network:
+    driver: bridge
+
+volumes:
+  design-mysql-local-data:
+  design-mongodb-local-data:
+  design-mongodb-local-config:
+  design-redis-local-data: 

@@ -1,0 +1,28 @@
+.payment-example {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.payment-section {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.payment-section h2 {
+  margin: 0 0 16px;
+  color: #333333;
+  font-size: 24px;
+}
+
+.payment-section .payment-button,
+.payment-section .subscribe-button {
+  margin-bottom: 16px;
+}
+
+.payment-section .payment-status {
+  margin-top: 16px;
+} 

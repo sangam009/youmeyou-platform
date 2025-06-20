@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  payment-service:
+    container_name: payment-service-ms
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+        - PORT=4000
+        - USE_NON_ROOT_USER=true
+    ports:
+      - "4000:4000"
+    depends_on:
+      payment-mysql-ms:
+        condition: service_healthy
+    env_file:
+      - env.production.txt
+    networks:
+      - payment-network
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  payment-mysql-ms:
+    container_name: payment-mysql-ms
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    env_file:
+      - env.production.txt
+    volumes:
+      - payment-mysql-data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks:
+      - payment-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  payment-network:
+    driver: bridge
+
+volumes:
+  payment-mysql-data: 

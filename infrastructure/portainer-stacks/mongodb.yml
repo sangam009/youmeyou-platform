@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  design-mongodb:
+    image: mongo:7.0
+    container_name: design-mongodb-${STACK_NAME:-prod}
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=codaloo_design
+    volumes:
+      - design_mongodb_data:/data/db
+      - design_mongodb_config:/data/configdb
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    networks:
+      - codaloo-network
+    command: --auth --bind_ip_all --wiredTigerCacheSizeGB 2
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    labels:
+      - "com.youmeyou.service=design-mongodb"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+
+volumes:
+  design_mongodb_data:
+    driver: local
+  design_mongodb_config:
+    driver: local
+
+networks:
+  codaloo-network:
+    external: true 

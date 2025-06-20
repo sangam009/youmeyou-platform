@@ -1,0 +1,129 @@
+# Payment Microservice Implementation Plan
+
+This document outlines the development milestones for the Payment Microservice, which integrates with the Auth Microservice for authorization.
+
+## Milestone 1: Project Setup and Auth Integration
+
+**Goal:** Set up the basic structure and integrate with the Auth Microservice.
+
+### Tasks:
+1. Create project structure for paymentmicroservice
+2. Set up database schema for payments, plans, and subscriptions
+3. Implement integration with authmicroservice for authentication:
+   - Create an auth client for calling `/session/validate`
+   - Implement session token extraction from requests
+   - Add user role and permission caching for performance
+4. Create role-based middleware using auth service validation:
+   - Build `requireRole('admin')` middleware for admin-only endpoints
+   - Build `requireRole('user')` middleware for user endpoints
+   - Add permission-level checks for granular control
+5. Implement proper error responses for authentication/authorization failures
+6. Set up Docker configuration for the payment microservice with network links to auth service
+
+## Milestone 2: Core Payment API Development
+
+**Goal:** Implement the basic payment API endpoints.
+
+### Tasks:
+1. Implement gateway abstraction layer (supporting Razorpay initially)
+2. Create the `/api/payment/create-order` endpoint for one-time payments:
+   - Apply `requireRole('user')` middleware
+   - Add validation for request parameters
+3. Create the `/api/payment/verify-payment` endpoint
+4. Implement the `/api/payment/status/:order_id` endpoint (with deprecation notice)
+5. Implement the `/api/payment/details/:payment_id` endpoint with computed status logic
+6. Add payment status tracking and database operations
+7. Implement expiry logic for payments
+
+## Milestone 3: Subscription Management
+
+**Goal:** Implement subscription-related functionality.
+
+### Tasks:
+1. Create the `/api/payment/create-plan` admin endpoint:
+   - Apply `requireRole('admin')` middleware
+   - Add validation for plan parameters
+2. Implement the `/api/payment/subscribe` endpoint for users:
+   - Apply `requireRole('user')` middleware
+   - Add validation for subscription parameters
+3. Add subscription tracking in the database
+4. Implement subscription status management
+5. Add subscription renewal handling
+
+## Milestone 4: Webhook Handling and Status Updates
+
+**Goal:** Set up webhook handling for payment gateways and implement real-time status updates.
+
+### Tasks:
+1. Create the `/api/payment/webhook/:gateway` endpoint
+2. Implement webhook handlers for different gateways (Razorpay initially)
+3. Set up Firebase integration for real-time status updates
+4. Implement event processing for different payment events
+
+## Milestone 5: Payment Maintenance and Background Processing
+
+**Goal:** Implement background processing for payment status updates and maintenance.
+
+### Tasks:
+1. Create CRON jobs for checking expired payments
+2. Implement reconciliation jobs for payment verification
+3. Add retry mechanisms for failed payments
+4. Create payment status tracking and notifications
+5. Implement internal transaction ID generation and tracking
+
+## Milestone 6: Refund Management
+
+**Goal:** Implement refund functionality.
+
+### Tasks:
+1. Add refund initiating functionality
+2. Implement refund status tracking
+3. Create webhook handlers for refund events
+4. Add refund reconciliation to maintenance jobs
+
+## Milestone 7: Frontend Integration
+
+**Goal:** Create React components for payment flows.
+
+### Tasks:
+1. Create `PaymentButton` component for one-time payments
+2. Create `SubscribeButton` component for subscriptions
+3. Implement `PaymentStatus` component for displaying payment results
+4. Add Firebase subscription for real-time status updates
+5. Implement UPI intent and other payment flow variants
+
+## Milestone 8: Testing and Documentation
+
+**Goal:** Ensure quality and provide comprehensive documentation.
+
+### Tasks:
+1. Write unit and integration tests
+2. Create API documentation (similar to auth microservice)
+3. Conduct load and performance testing
+4. Create user and developer guides
+5. Document integration patterns with other microservices
+
+## Milestone 9: Gateway Extensibility
+
+**Goal:** Ensure the payment service is easily extensible to other payment gateways.
+
+### Tasks:
+1. Refine gateway abstraction layer
+2. Add support for additional gateways (PhonePe, Cashfree)
+3. Create documentation for adding new gateways
+4. Implement gateway-specific configuration management
+
+## Auth Service Integration Details
+
+For integration with the Auth Microservice, we'll:
+
+1. Use the Auth Service API as documented in `api-specification.md`
+2. Implement a lightweight client to make requests to the Auth Service
+3. Create middleware functions that:
+   - Extract session tokens from requests
+   - Call Auth Service to validate tokens and retrieve user roles
+   - Make authorization decisions based on the returned permissions
+4. Add error handling for Auth Service connection issues
+5. Include unit tests for authorization scenarios, including edge cases
+
+This approach leverages the existing Auth Service capabilities without requiring any changes to the Auth Service itself, maintaining the separation of concerns between microservices. 

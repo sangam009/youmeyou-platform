@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  design-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+        - PORT=4000
+        - USE_NON_ROOT_USER=true
+    image: design-service:latest
+    container_name: design-service-ms
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - env.production.txt
+    depends_on:
+      design-mysql-ms:
+        condition: service_healthy
+      design-mongodb-ms:
+        condition: service_healthy
+    networks:
+      - design-network
+    volumes:
+      - ./logs:/app/logs
+    deploy:
+      mode: replicated
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints: [node.role == worker]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  design-mysql-ms:
+    image: mysql:8.0
+    container_name: design-mysql-ms
+    restart: unless-stopped
+    env_file:
+      - env.production.txt
+    ports:
+      - "3308:3306"
+    volumes:
+      - design-mysql-data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - design-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  design-mongodb-ms:
+    image: mongo:7.0
+    container_name: design-mongodb-ms
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGODB_DATABASE}
+    ports:
+      - "27018:27017"
+    volumes:
+      - design-mongodb-data:/data/db
+      - design-mongodb-config:/data/configdb
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - design-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Redis for caching and real-time features
+  design-redis-ms:
+    image: redis:alpine
+    container_name: design-redis-ms
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6380:6379"
+    volumes:
+      - design-redis-data:/data
+    networks:
+      - design-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  design-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  design-mysql-data:
+  design-mongodb-data:
+  design-mongodb-config:
+  design-redis-data: 
