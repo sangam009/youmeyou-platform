@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  design-service:
+    image: youmeyou/codaloo-design:${VERSION:-latest}
+    container_name: design-service-${STACK_NAME:-prod}
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DB_HOST=design-mysql-${STACK_NAME:-prod}
+      - DB_PORT=3306
+      - DB_NAME=codaloo_design
+      - DB_USER=codaloo_user
+      - DB_PASSWORD=${DESIGN_DB_PASSWORD}
+      - MONGODB_URI=mongodb://admin:${MONGO_ROOT_PASSWORD}@design-mongodb-${STACK_NAME:-prod}:27017/codaloo_design?authSource=admin
+      - REDIS_HOST=codaloo-redis-${STACK_NAME:-prod}
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - AUTH_SERVICE_URL=http://auth-service-${STACK_NAME:-prod}:3001
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CORS_ORIGIN=https://youmeyou.ai,https://design.youmeyou.ai
+      - DOMAIN=youmeyou.ai
+    ports:
+      - "${DESIGN_PORT:-4000}:4000"
+    networks:
+      - codaloo-network
+    depends_on:
+      - design-mysql-${STACK_NAME:-prod}
+      - design-mongodb-${STACK_NAME:-prod}
+      - codaloo-redis-${STACK_NAME:-prod}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    labels:
+      - "com.youmeyou.service=design-service"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+      - "com.youmeyou.domain=design.youmeyou.ai"
+
+networks:
+  codaloo-network:
+    external: true 

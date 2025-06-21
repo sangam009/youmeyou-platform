@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  payment-mysql:
+    image: mysql:8.0
+    container_name: payment-mysql-${STACK_NAME:-prod}
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=codaloo_payments
+      - MYSQL_USER=payment_user
+      - MYSQL_PASSWORD=${PAYMENT_DB_PASSWORD}
+    volumes:
+      - payment_mysql_data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "${PAYMENT_MYSQL_PORT:-3308}:3306"
+    networks:
+      - codaloo-network
+    command: --default-authentication-plugin=mysql_native_password --max_connections=500 --innodb_buffer_pool_size=2G
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    labels:
+      - "com.youmeyou.service=payment-database"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+
+volumes:
+  payment_mysql_data:
+    driver: local
+
+networks:
+  codaloo-network:
+    external: true 

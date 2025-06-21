@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  auth-mysql:
+    image: mysql:8.0
+    container_name: auth-mysql-${STACK_NAME:-prod}
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=codaloo_auth
+      - MYSQL_USER=auth_user
+      - MYSQL_PASSWORD=${AUTH_DB_PASSWORD}
+    volumes:
+      - auth_mysql_data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "${AUTH_MYSQL_PORT:-3306}:3306"
+    networks:
+      - codaloo-network
+    command: --default-authentication-plugin=mysql_native_password --max_connections=1000 --innodb_buffer_pool_size=2G
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    labels:
+      - "com.youmeyou.service=auth-database"
+      - "com.youmeyou.environment=${ENVIRONMENT:-production}"
+
+volumes:
+  auth_mysql_data:
+    driver: local
+
+networks:
+  codaloo-network:
+    external: true 
