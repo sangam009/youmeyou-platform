@@ -1,0 +1,93 @@
+# Codaloo Dashboard UI Plan (Sub-M1.2)
+
+## 1. Visual & Theming Principles
+- Use Codaloo's logo, color palette, and modern, clean look (matching login/signup pages)
+- White background, soft gray cards, blue/gradient accents, rounded corners, generous spacing
+- Consistent font and button styles across all dashboard components
+
+## 2. Layout Structure
+- **Sidebar (Left, fixed):**
+  - User avatar, name, dropdown for profile/settings
+  - Search bar (placeholder for now)
+  - Navigation:
+    - Recents
+    - Drafts
+    - Templates & Tools
+    - [Workspace section]
+      - List of workspaces (active highlighted)
+      - Drafts, All projects, Trash (per workspace)
+    - Starred (future: team projects)
+  - Upgrade/plan info (optional, as in Figma)
+
+- **Header (Top, main area):**
+  - Workspace name, switcher dropdown
+  - Notification bell (placeholder)
+  - (Future: Quick actions, e.g., New Project)
+
+- **Main Content Area:**
+  - Tabs: Recently viewed, Shared files, Shared projects
+  - **Project List:**
+    - Card or list view of projects (grid, 3-4 columns)
+    - Each card: project thumbnail (placeholder), name, last edited, template icon, actions (rename, delete)
+    - "New Project" card/button at the start or top right
+  - **Templates:**
+    - Show available templates as cards (for new project modal)
+
+## 3. Modals & Actions
+- **New Project Modal:**
+  - Project name input
+  - Template selection (cards, with preview)
+  - Create/Cancel buttons
+- **Rename Project Modal:**
+  - Input for new name
+  - Save/Cancel
+- **Delete Project Confirmation:**
+  - Confirm/cancel
+
+## 4. Navigation & Routing
+- After login, redirect to `/dashboard` (not `/`)
+- `/dashboard` shows the main dashboard UI
+- `/dashboard/project/:id` for project details (future)
+- `/dashboard/profile` for user profile (future)
+
+## 5. API Endpoints (Assumptions)
+- **Workspaces:**
+  - `GET /workspaces` — List user's workspaces
+  - `POST /workspaces` — Create new workspace
+  - `POST /workspaces/:id/switch` — Switch active workspace
+  - `POST /workspaces/:id/invite` — (future)
+- **Projects:**
+  - `GET /workspaces/:id/projects` — List projects in workspace
+  - `POST /workspaces/:id/projects` — Create new project
+  - `PATCH /projects/:id` — Rename project
+  - `DELETE /projects/:id` — Delete project
+- **Templates:**
+  - `GET /templates` — List available templates
+
+## 6. Component Breakdown
+- `SidebarNav`
+- `WorkspaceSwitcher`
+- `ProjectList` (grid/list, with card component)
+- `ProjectCard`
+- `NewProjectModal`
+- `RenameProjectModal`
+- `DeleteProjectModal`
+- `TemplateCard`
+- `HeaderBar`
+
+## 7. Theming & Visual Consistency
+- Use Codaloo gradient/blue for accents, buttons, and highlights
+- White/gray backgrounds, rounded corners, subtle shadows
+- Use CodalooLogo in sidebar/header
+- Responsive design for desktop and tablet
+
+## 8. Future Enhancements
+- Team collaboration (avatars, shared projects)
+- Notifications
+- Profile/settings page
+- Drag-and-drop project reordering
+- Real-time updates
+
+---
+
+**This plan will guide the implementation of the dashboard milestone. All UI should match the clean, modern, and friendly Codaloo theme established in the login/signup pages.** 
