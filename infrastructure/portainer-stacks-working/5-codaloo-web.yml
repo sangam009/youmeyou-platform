@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Codaloo Web Application (Next.js)
+  codaloo-web:
+    image: localhost:5000/youmeyou/codaloo-web:latest
+    container_name: youmeyou-codaloo-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      PORT: 3000
+      # API endpoints for microservices (HTTPS)
+      NEXT_PUBLIC_API_BASE_URL: https://youmeyou.ai
+      NEXT_PUBLIC_AUTH_API_URL: https://youmeyou.ai/api/auth
+      NEXT_PUBLIC_DESIGN_API_URL: https://youmeyou.ai/api/design
+      NEXT_PUBLIC_PAYMENT_API_URL: https://youmeyou.ai/api/payment
+      # Firebase configuration
+      NEXT_PUBLIC_FIREBASE_API_KEY: your-firebase-api-key
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: youmeyou-staging.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: youmeyou-staging
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: youmeyou-staging.appspot.com
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: your-sender-id
+      NEXT_PUBLIC_FIREBASE_APP_ID: your-app-id
+      # App configuration
+      NEXT_PUBLIC_APP_NAME: Codaloo
+      NEXT_PUBLIC_APP_VERSION: 1.0.0
+      NEXT_PUBLIC_ENVIRONMENT: staging
+    ports:
+      - "3000:3000"  # Web application port
+    networks:
+      - youmeyou-internal
+      - youmeyou-public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+networks:
+  youmeyou-internal:
+    external: true
+  youmeyou-public:
+    external: true 

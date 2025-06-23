@@ -1,0 +1,50 @@
+# YouMeYou Production Environment Configuration
+# Copy this file to terraform.tfvars and update with your values
+
+# GCP Project Configuration
+project_id = "youmeyou"            # Your actual GCP project ID
+region     = "us-central1"         # US Central for US market (primary)
+zone       = "us-central1-a"       # US zone
+
+# Domain Configuration
+domain_name = "youmeyou.ai"
+
+# Multi-Region Deployment (for US and India markets)
+deploy_multi_region = false        # Set to true when ready for global deployment
+primary_region     = "us-central1"  # US market
+secondary_region   = "asia-south1"  # India market
+primary_zone       = "us-central1-a"
+secondary_zone     = "asia-south1-a"
+
+# DNS Configuration (set to true to manage DNS via GCP)
+create_dns_zone = true
+
+# High Availability Configuration
+vm_count        = 2                # Number of VMs for high availability
+vm_machine_type = "e2-standard-4"  # 4 vCPU, 16GB RAM per VM
+
+# Storage Configuration
+data_disk_size = 100  # 100GB SSD for data per VM
+boot_disk_size = 50   # 50GB SSD for OS per VM
+
+# Monitoring and Backup Configuration
+enable_monitoring      = true
+enable_backup         = true
+backup_retention_days = 30
+
+# SSL Certificate Domains (auto-configured based on domain_name)
+ssl_certificate_domains = [
+  "youmeyou.ai",
+  "auth.youmeyou.ai",
+  "design.youmeyou.ai",
+  "payment.youmeyou.ai"
+]
+
+# Health Check Configuration
+health_check_path = "/health"
+
+# Load Balancer Configuration
+load_balancer_timeout = 30
+
+# Environment
+environment = "production" 

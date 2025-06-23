@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Nginx Gateway - Routes traffic to microservices
+  nginx-gateway:
+    image: nginx:alpine
+    container_name: youmeyou-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP traffic
+      - "443:443"   # HTTPS traffic (for future SSL)
+    volumes:
+      - /home/ubuntu/youmeyou-stacks/nginx-config:/etc/nginx/conf.d
+      - /home/ubuntu/youmeyou-stacks/nginx-logs:/var/log/nginx
+      - /home/ubuntu/youmeyou-stacks/ssl-certs:/etc/ssl/certs
+    # No networks needed - using host.docker.internal for service communication
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+# Networks not needed - using host networking for service communication 

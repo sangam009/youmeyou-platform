@@ -1,0 +1,122 @@
+# Auth Microservice Stack - Docker Service Names Configuration
+# This stack uses Docker service names for persistent connectivity across restarts
+# All services are on the same youmeyou-data network for internal communication
+
+version: '3.8'
+
+services:
+  # Auth Service MySQL Database (Internal Only)
+  auth-mysql:
+    image: mysql:8.0
+    container_name: youmeyou-auth-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: auth_mysql_root_2024!
+      MYSQL_DATABASE: auth_service
+      MYSQL_USER: auth_user
+      MYSQL_PASSWORD: auth_password_2024!
+    volumes:
+      - auth_mysql_data:/var/lib/mysql
+      - ./auth-mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - youmeyou-data
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Auth Service Redis (Internal Only) - Temporarily without password
+  auth-redis:
+    image: redis:7-alpine
+    container_name: youmeyou-auth-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - auth_redis_data:/data
+    networks:
+      - youmeyou-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # Auth Service API (Server-level access, Gateway routes publicly)
+  auth-service:
+    image: registry-staging.youmeyou.ai/youmeyou/auth-service:latest
+    container_name: youmeyou-auth-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      PORT: 3001
+      # Database connection - using DATABASE_URL format
+      DATABASE_URL: mysql://auth_user:auth_password_2024!@auth-mysql:3306/auth_service
+      # Individual DB parameters as backup
+      DB_HOST: auth-mysql
+      DB_PORT: 3306
+      DB_NAME: auth_service
+      DB_USER: auth_user
+      DB_PASSWORD: auth_password_2024!
+      DB_CONNECTION_LIMIT: 10
+      # Redis without password for testing
+      REDIS_HOST: auth-redis
+      REDIS_PORT: 6379
+      SESSION_SECRET: youmeyou-auth-session-secret-staging-2024
+      REDIS_PREFIX: auth_staging_
+      REDIS_TTL: 86400
+      JWT_SECRET: youmeyou-auth-jwt-secret-staging-2024
+      FIREBASE_TYPE: service_account
+      FIREBASE_PROJECT_ID: sangam-21934
+      FIREBASE_PRIVATE_KEY_ID: 4f7eeb6a09bb7b0213f407835d280f64c96a9c4a
+      FIREBASE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJi6D5/SU8rLXr\nsdayRlonNmiPaNjY+ruW7YkL/WBHvy+ZARleVLBXIgnpQzXImTVEPMz+G8t1/M5U\nqSgHIjio7/+9FDKO4j7pMoikhBbxl2AmFdgmOhFqISQUGdlbe+XrHfVvHTNEgTyg\nBk/UeC1mJZ5OvM2eaCHNOT/F4hjJDAWlYMCRkUPnLfA7JLIdkQkM1DJoDqgGgkut\ngoUuo49mvZ22QVgi2m6wncFhGtTzSKZ8UWNPKL01Ob/pvVyeHJlwhy+vdWkLuFz8\nI6QlltCHCTg5mnXrLUGWQSOsUSdKUKnAwKCD89PXKl2Oiz90dBoyIzhxN0QMPQmk\njtIgO52RAgMBAAECggEACgkI/umUs3mC2JvsrZVeYwCmiPcWtQpNa0c9WuETrJh5\nOj9/wxHccro5j0/PAcOYwpXa1Y90vG88c6K1YR8nF+JU8++cuAvNeupCCE8IOKDp\nvK7ukEvosHjt+I8NvF+ZVyR3iaZrXK6pFVHuVg0vbxw4aBtAJPI/Njfyuo7dEd8p\ndkghAzTU7/mEIopZz6gqUWJ1D+gqTqeGzmKoo1HLptkhg92d5W3wnzP57OTMF6B5\n5carrLEXCcO7eddInAA1N3TGh505o07wR761RJalqCoJe/OdMTBhMA2k9OVcOE2r\nzQTNscAxLsxhlkhwq39seY5FF24XGRmh5SdvLDIOcQKBgQD4RH7xyX2Laf1jKO8d\nzIxtbbl/4Yk/zLyVvBn2SBuy2rNZ6H5CFR5kP92VK2AHpwqF5eW9ngYELfiJU261\nGQJCQhEKIXY6VTdB92OU6CUaFBhu1Z6KBmT8ImFQgJhH0QyZvu3RAAyhBj10Di/E\njuklnVA+//ZNIEq3tAtrg17+ewKBgQDP0prReDn+RzYgzgtwgtH+WQC1+uiFQDfi\nCgVpFsp35DhNdBUqBgchMhGcK0lA7p9JVKprX+0lgWua0VYugteX6fWFK8u/BSkl\nyoZtv+4Np16dHSq2vD3CwFhvHpybH166QOnBohGFHI3877lDe+jY49ABV6Yf154c\nkBJX9LFcYwKBgQDaToDB48d9e+nP9AKvVVp2LvHavVuOul1p3UmHAsk4cI8dFA9R\n1Hgw9ufFb6q1j/D05L8sCXSI4FOXjcHfhOozkRyip+HqUVyRqRPrsGZPlDQX4cfS\n3uSVwTWJMEq3e990oitEiKKSRYZsMr1WPcRNyxLxEuplz2tkNfGEzLQPWQKBgQDJ\ntkaibakMTx4QdSzRRYiA8O4ps6EgRJZ5BPT/bSmTeKXVN4ibQ0KES86f37u4FGPy\njwTiNzc8IgPJPsoBVune/yxY14tomp+3mH0l5RYvlnXU1UxyFP91GbA8GmAyiB4v\ndXXthVqv8mk2SY9uGsSET4nC48nQOj2yx3umd0/2tQKBgD1b60nJqgQJHRPE7t8Y\nSAEmbB/64Jnp/3wAxtX7ZhyNA7Upm7L7Ctr0N9JH/1Y2dSeN/FJQYipVUsnwqtTn\nZyMDdXWTOZYho+Y6ORKyoBdwDNHrHyu9f1p2gGCJJLIB7JKusbB9yLjShKeqRySU\nKu0q3QT89B8xOcon6/k8DSbp\n-----END PRIVATE KEY-----\n"
+      FIREBASE_CLIENT_EMAIL: firebase-adminsdk-b8avx@sangam-21934.iam.gserviceaccount.com
+      FIREBASE_CLIENT_ID: 117835297085976543210
+      FIREBASE_AUTH_URI: https://accounts.google.com/o/oauth2/auth
+      FIREBASE_TOKEN_URI: https://oauth2.googleapis.com/token
+      FIREBASE_AUTH_PROVIDER_X509_CERT_URL: https://www.googleapis.com/oauth2/v1/certs
+      FIREBASE_CLIENT_X509_CERT_URL: https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-b8avx%40sangam-21934.iam.gserviceaccount.com
+      FIREBASE_UNIVERSE_DOMAIN: googleapis.com
+      CORS_ORIGIN: "http://34.93.209.77,https://34.93.209.77,http://youmeyou.staging.com,https://youmeyou.staging.com"
+    ports:
+      - "3001:3001"  # Server-level access (not public via firewall)
+    depends_on:
+      - auth-mysql
+      - auth-redis
+    networks:
+      - youmeyou-data
+      - youmeyou-internal
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); const req = http.get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on('error', () => process.exit(1)); req.setTimeout(5000, () => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+volumes:
+  auth_mysql_data:
+    driver: local
+  auth_redis_data:
+    driver: local
+
+networks:
+  youmeyou-data:
+    external: true
+  youmeyou-internal:
+    external: true 

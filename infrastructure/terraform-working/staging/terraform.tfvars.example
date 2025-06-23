@@ -1,0 +1,28 @@
+# YouMeYou Staging Environment Configuration (India-based for fast testing)
+# Copy this file to terraform.tfvars and update with your values
+
+# GCP Project Configuration
+project_id = "youmeyou"            # Your actual GCP project ID
+region     = "asia-south1"         # Mumbai, India for faster access
+zone       = "asia-south1-a"       # Mumbai zone
+
+# Domain and Email Configuration
+domain_name   = "youmeyou.ai"
+support_email = "youmeyou.kafeneo@gmail.com"  # Your actual email
+
+# DNS Configuration (set to true if you want to manage DNS via GCP)
+create_dns_zone = false
+
+# IAP Configuration for Private Access
+enable_iap = true
+iap_users = [
+  "user:youmeyou.kafeneo@gmail.com"  # Your email for staging access
+]
+
+# VM Configuration
+vm_machine_type = "e2-standard-4"  # 4 vCPU, 16GB RAM
+data_disk_size  = 100              # 100GB SSD for data
+boot_disk_size  = 50               # 50GB SSD for OS
+
+# Environment
+environment = "staging" 

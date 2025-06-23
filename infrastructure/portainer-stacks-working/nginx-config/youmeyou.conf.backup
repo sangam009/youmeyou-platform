@@ -1,0 +1,210 @@
+# YouMeYou Platform - NGINX Gateway Configuration
+# Routes traffic to microservices with DNS-based routing and IP restrictions
+
+# Your IP address for restricted access (update as needed)
+geo $allowed_ip {
+    default 0;
+    # Add your current IP address here - replace with your actual IP
+    103.87.169.0/24 1;  # Example range - update with your actual IP
+    127.0.0.1 1;        # Localhost for testing
+    10.0.0.0/8 1;       # Internal network
+    172.16.0.0/12 1;    # Docker networks
+    192.168.0.0/16 1;   # Private networks
+}
+
+# Upstream definitions for microservices
+upstream auth_service {
+    server youmeyou-auth-service:3001;
+}
+
+upstream design_service {
+    server youmeyou-design-service:4000;
+}
+
+upstream payment_service {
+    server youmeyou-payment-service:6000;
+}
+
+upstream portainer_service {
+    server host.docker.internal:9000;
+}
+
+upstream registry_service {
+    server host.docker.internal:5000;
+}
+
+upstream registry_ui_service {
+    server host.docker.internal:5001;
+}
+
+# Main application server
+server {
+    listen 80;
+    server_name 34.93.209.77 youmeyou.staging.com;
+    
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    
+    # CORS headers
+    add_header Access-Control-Allow-Origin "*";
+    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+    add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+    
+    # Handle preflight requests
+    location ~ ^/api/ {
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*";
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+    }
+    
+    # Auth Service API
+    location /api/auth/ {
+        proxy_pass http://auth_service/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # Design Service API
+    location /api/design/ {
+        proxy_pass http://design_service/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # Payment Service API
+    location /api/payment/ {
+        proxy_pass http://payment_service/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # Health check endpoints
+    location /health/auth {
+        proxy_pass http://auth_service/health;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    location /health/design {
+        proxy_pass http://design_service/health;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    location /health/payment {
+        proxy_pass http://payment_service/health;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    # Default location
+    location / {
+        return 200 'YouMeYou Platform Gateway - Services Available at /api/auth/, /api/design/, /api/payment/';
+        add_header Content-Type text/plain;
+    }
+}
+
+# Portainer Management Interface (IP Restricted)
+server {
+    listen 80;
+    server_name portainer.youmeyou.staging.com portainer-staging.youmeyou.ai;
+    
+    # IP restriction for Portainer access
+    if ($allowed_ip = 0) {
+        return 403 "Access denied - IP not authorized";
+    }
+    
+    location / {
+        proxy_pass http://portainer_service;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+
+# Docker Registry (IP Restricted)
+server {
+    listen 80;
+    server_name registry.youmeyou.staging.com registry-staging.youmeyou.ai;
+    
+    # IP restriction for Registry access
+    if ($allowed_ip = 0) {
+        return 403 "Access denied - IP not authorized";
+    }
+    
+    location / {
+        proxy_pass http://registry_service;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Registry specific headers
+        proxy_set_header Docker-Content-Digest $upstream_http_docker_content_digest;
+        proxy_set_header Docker-Distribution-Api-Version $upstream_http_docker_distribution_api_version;
+        proxy_buffering off;
+        
+        # Increase timeouts for large image uploads
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 2G;
+    }
+}
+
+# Docker Registry UI (IP Restricted)
+server {
+    listen 80;
+    server_name registry-ui.youmeyou.staging.com registry-ui-staging.youmeyou.ai;
+    
+    # IP restriction for Registry UI access
+    if ($allowed_ip = 0) {
+        return 403 "Access denied - IP not authorized";
+    }
+    
+    location / {
+        proxy_pass http://registry_ui_service;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+} 

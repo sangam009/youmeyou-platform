@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  codaloo-web:
+    image: registry-staging.youmeyou.ai/youmeyou/codaloo-web:latest
+    container_name: youmeyou-codaloo-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_AUTH_API_URL=https://youmeyou.ai/api/auth
+      - NEXT_PUBLIC_DESIGN_API_URL=https://youmeyou.ai/api/design
+      - NEXT_PUBLIC_PAYMENT_API_URL=https://youmeyou.ai/api/payment
+    networks:
+      - youmeyou-public
+      - youmeyou-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.codaloo-web.rule=Host(`youmeyou.ai`) || Host(`staging.youmeyou.ai`)"
+      - "traefik.http.routers.codaloo-web.entrypoints=web"
+      - "traefik.http.services.codaloo-web.loadbalancer.server.port=3000"
+
+networks:
+  youmeyou-public:
+    external: true
+  youmeyou-internal:
+    external: true 
