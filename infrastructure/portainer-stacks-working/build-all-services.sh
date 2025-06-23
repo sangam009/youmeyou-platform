@@ -14,7 +14,7 @@ echo "🏗️ Building All YouMeYou Services from Private Git Repository"
 echo "============================================================="
 
 # Configuration
-REGISTRY_HOST="localhost:5000"
+REGISTRY_HOST="registry-staging.youmeyou.ai"
 REGISTRY_USER="youmeyou"
 REGISTRY_PASS="staging2024!"
 GIT_REPO="https://${GITHUB_TOKEN}@github.com/sangam009/youmeyou-platform.git"

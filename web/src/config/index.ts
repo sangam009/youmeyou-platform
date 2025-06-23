@@ -1,3 +1,8 @@
+// Environment detection
+const isClient = typeof window !== 'undefined';
+const hostname = isClient ? window.location.hostname : '';
+const isProduction = hostname.includes('youmeyou.ai');
+
 export const config = {
   firebase: {
     apiKey: "AIzaSyC8aNECZ373-VSaO6rnGNJXM3Dexf49YhE",
@@ -10,6 +15,19 @@ export const config = {
     measurementId: "G-ZP8GZ0XPF9"
   },
   auth: {
-    serviceUrl: "http://localhost:3001"
+    serviceUrl: (() => {
+      // For production: use nginx proxy routes (secure, goes through HTTPS)
+      if (isProduction) return "/api/auth";
+      // For local development: direct service access
+      return "http://localhost:3001";
+    })()
+  },
+  api: {
+    designService: (() => {
+      // For production: use nginx proxy routes (secure, goes through HTTPS)  
+      if (isProduction) return "/api/design";
+      // For local development: direct service access
+      return "http://localhost:4000";
+    })()
   }
 }; 

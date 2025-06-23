@@ -88,7 +88,7 @@ services:
       FIREBASE_AUTH_PROVIDER_X509_CERT_URL: https://www.googleapis.com/oauth2/v1/certs
       FIREBASE_CLIENT_X509_CERT_URL: https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-b8avx%40sangam-21934.iam.gserviceaccount.com
       FIREBASE_UNIVERSE_DOMAIN: googleapis.com
-      CORS_ORIGIN: "http://34.93.209.77,https://34.93.209.77,http://youmeyou.staging.com,https://youmeyou.staging.com"
+      CORS_ORIGIN: "http://localhost:3000,https://staging.youmeyou.ai,https://youmeyou.ai,http://youmeyou-codaloo-web:3000"
     ports:
       - "3001:3001"  # Server-level access (not public via firewall)
     depends_on:

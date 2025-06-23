@@ -3,24 +3,27 @@ version: '3.8'
 services:
   # Codaloo Web Application (Next.js)
   codaloo-web:
-    image: localhost:5000/youmeyou/codaloo-web:latest
+    image: registry-staging.youmeyou.ai/youmeyou/codaloo-web:latest
     container_name: youmeyou-codaloo-web
     restart: unless-stopped
     environment:
-      NODE_ENV: staging
+      NODE_ENV: production
       PORT: 3000
-      # API endpoints for microservices (HTTPS)
-      NEXT_PUBLIC_API_BASE_URL: https://youmeyou.ai
-      NEXT_PUBLIC_AUTH_API_URL: https://youmeyou.ai/api/auth
-      NEXT_PUBLIC_DESIGN_API_URL: https://youmeyou.ai/api/design
-      NEXT_PUBLIC_PAYMENT_API_URL: https://youmeyou.ai/api/payment
-      # Firebase configuration
-      NEXT_PUBLIC_FIREBASE_API_KEY: your-firebase-api-key
-      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: youmeyou-staging.firebaseapp.com
-      NEXT_PUBLIC_FIREBASE_PROJECT_ID: youmeyou-staging
-      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: youmeyou-staging.appspot.com
-      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: your-sender-id
-      NEXT_PUBLIC_FIREBASE_APP_ID: your-app-id
+      # API endpoints now use nginx proxy routes (relative URLs)
+      # These are handled by nginx reverse proxy
+      # /api/auth -> auth-service:3001
+      # /api/design -> design-service:4000  
+      # /api/payment -> payment-service:6000
+      
+      # Firebase configuration (using actual values from config)
+      NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyC8aNECZ373-VSaO6rnGNJXM3Dexf49YhE
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: sangam-21934.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: sangam-21934
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: sangam-21934.appspot.com
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: 1086616413297
+      NEXT_PUBLIC_FIREBASE_APP_ID: 1:1086616413297:web:6a21ff0deb8c3b43ec67d0
+      NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: G-ZP8GZ0XPF9
+      
       # App configuration
       NEXT_PUBLIC_APP_NAME: Codaloo
       NEXT_PUBLIC_APP_VERSION: 1.0.0
@@ -31,10 +34,11 @@ services:
       - youmeyou-internal
       - youmeyou-public
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
