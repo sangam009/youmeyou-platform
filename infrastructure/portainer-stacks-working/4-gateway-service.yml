@@ -12,7 +12,7 @@ services:
     volumes:
       - /home/ubuntu/youmeyou-stacks/nginx-config:/etc/nginx/conf.d
       - /home/ubuntu/youmeyou-stacks/nginx-logs:/var/log/nginx
-      - /home/ubuntu/youmeyou-stacks/ssl-certs:/etc/ssl/certs
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     # No networks needed - using host.docker.internal for service communication
     healthcheck:
       test: ["CMD", "nginx", "-t"]
