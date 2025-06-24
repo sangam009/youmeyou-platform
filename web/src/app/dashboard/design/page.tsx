@@ -20,6 +20,7 @@ import {
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { getWorkspaces } from '@/lib/dashboardApi';
+import { askAgent } from '@/lib/canvasApi';
 
 // Enhanced node types with scalability properties
 const initialNodes: Node[] = [
@@ -377,30 +378,12 @@ function DesignCanvasPage() {
     setIsAgentTyping(true);
 
     try {
-      // Call the agent API with full canvas context
-      const response = await fetch('http://localhost:4000/agents/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'chat',
-          content: chatInput,
-          canvasState: { nodes, edges },
-          context: agentContext ? {
-            component: agentContext,
-            canvasState: { nodes, edges }
-          } : { canvasState: { nodes, edges } },
-          currentMode: currentMode,
-          selectedComponent: selectedNode?.data?.label || null
-        })
+      // Use the centralized askAgent API that respects environment configuration
+      const result = await askAgent({
+        content: chatInput,
+        canvasState: { nodes, edges },
+        agentId: 'arch-001' // Default to architecture agent
       });
-
-      if (!response.ok) {
-        throw new Error(`Agent API error: ${response.status}`);
-      }
-
-      const result = await response.json();
       
       // Extract the response content from the API structure
       let responseContent = "I'm here to help with your architecture! Could you tell me more about what you're trying to build?";
