@@ -77,6 +77,8 @@ const initializeSession = async () => {
   await connectRedis();
   
   // Session configuration with Redis
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+  
   app.use(session({
     store: new RedisStore({ 
       client: redisClient,
@@ -85,10 +87,13 @@ const initializeSession = async () => {
     secret: process.env.SESSION_SECRET || 'default_secret_for_dev',
     resave: false,
     saveUninitialized: false,
+    name: 'connect.sid', // Explicitly set the session cookie name
     cookie: {
-      secure: false,
+      secure: false, // Keep as false since internal services use HTTP
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'lax', // Use lax for better compatibility
+      domain: isProduction ? '.youmeyou.ai' : undefined, // Set domain for production
+      path: '/',
       maxAge: parseInt(process.env.REDIS_TTL || '86400', 10) * 1000 // convert seconds to milliseconds
     }
   }));

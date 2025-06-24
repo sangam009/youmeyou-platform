@@ -4,12 +4,38 @@ const logger = require('../utils/logger');
 async function requireAuth(req, res, next) {
   try {
     // Get session ID from cookies or Authorization header
-    const sessionId = req.cookies?.sessionId || 
-                     (req.headers.authorization?.startsWith('Bearer ') ? 
-                      req.headers.authorization.slice(7) : null);
+    let sessionId = null;
+    
+    // Check for Authorization header first
+    if (req.headers.authorization?.startsWith('Bearer ')) {
+      sessionId = req.headers.authorization.slice(7);
+    }
+    // Check for connect.sid (Express session cookie)
+    else if (req.cookies?.['connect.sid']) {
+      // Express session cookies are signed, need to parse them
+      let rawSessionId = req.cookies['connect.sid'];
+      
+      // Remove signature if present (starts with 's:')
+      if (rawSessionId.startsWith('s:')) {
+        // Extract the session ID part before the signature
+        const parts = rawSessionId.slice(2).split('.');
+        sessionId = parts[0];
+      } else {
+        sessionId = rawSessionId;
+      }
+    }
+    // Check for plain sessionId cookie
+    else if (req.cookies?.sessionId) {
+      sessionId = req.cookies.sessionId;
+    }
     
     if (!sessionId) {
-      logger.warn('[AuthMiddleware] No session ID provided');
+      logger.warn('[AuthMiddleware] No session ID provided', {
+        cookies: Object.keys(req.cookies || {}),
+        connectSid: req.cookies?.['connect.sid']?.substring(0, 20) + '...',
+        hasAuth: !!req.headers.authorization,
+        userAgent: req.headers['user-agent']?.substring(0, 50)
+      });
       return res.status(401).json({ 
         error: 'Unauthorized',
         message: 'No session ID provided'
@@ -18,6 +44,13 @@ async function requireAuth(req, res, next) {
 
     // Validate session with auth service
     const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:3001';
+    
+    logger.info(`[AuthMiddleware] Validating session with auth service`, {
+      authServiceUrl,
+      sessionIdLength: sessionId.length,
+      sessionIdPrefix: sessionId.substring(0, 8) + '...'
+    });
+    
     const response = await axios.post(
       `${authServiceUrl}/session/validate`,
       { sessionId },
