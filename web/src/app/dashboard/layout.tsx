@@ -93,23 +93,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </nav>
           {/* New Workspace Modal */}
           {showNewWs && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col">
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col relative z-[10000]">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 text-center">Create New Workspace</h2>
                 <input
                   type="text"
-                  className="mb-3 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 text-base"
+                  className="mb-3 w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
                   value={newWsName}
                   onChange={e => setNewWsName(e.target.value)}
                   placeholder="Enter workspace name"
+                  autoFocus
                 />
                 {wsError && <div className="text-red-500 text-sm mb-2">{wsError}</div>}
                 <div className="flex justify-end gap-3 mt-4">
-                  <button onClick={() => { setShowNewWs(false); setNewWsName(''); setWsError(''); }} className="px-4 py-2 rounded-md bg-gray-100 text-gray-600 font-medium hover:bg-gray-200 transition">Cancel</button>
+                  <button 
+                    onClick={() => { setShowNewWs(false); setNewWsName(''); setWsError(''); }} 
+                    className="px-6 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
                   <button
                     onClick={handleCreateWorkspace}
                     disabled={!newWsName || workspaces.length >= 3}
-                    className="px-4 py-2 rounded-md bg-gradient-to-r from-green-300 via-blue-400 to-purple-400 text-white font-bold shadow-md hover:brightness-110 transition disabled:opacity-60"
+                    className="px-6 py-2 rounded-lg bg-gradient-to-r from-green-300 via-blue-400 to-purple-400 text-white font-bold shadow-md hover:brightness-110 transition disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     Create
                   </button>

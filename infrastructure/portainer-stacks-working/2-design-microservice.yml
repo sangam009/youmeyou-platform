@@ -63,6 +63,11 @@ services:
       REDIS_PASSWORD: design_redis_2024!
       CORS_ORIGIN: "http://localhost:3000,https://staging.youmeyou.ai,https://youmeyou.ai,http://youmeyou-codaloo-web:3000,http://localhost:3002"
       AUTH_SERVICE_URL: http://youmeyou-auth-service:3001
+      # AI Configuration
+      GEMINI_API_KEY: AIzaSyD4hpoKE-RdZdGYT1lTt_oFEumgvEr4riY
+      GOOGLE_AI_KEY: AIzaSyD4hpoKE-RdZdGYT1lTt_oFEumgvEr4riY
+      A2A_API_KEY: demo-a2a-key
+      A2A_PROJECT_ID: codaloo-staging
     ports:
       - "4000:4000"  # Server-level access (not public via firewall)
     depends_on:

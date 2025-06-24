@@ -958,35 +958,35 @@ module.exports = app;`}
       <div className="flex-1 relative">
         {/* Floating Component Toolbar */}
         {showComponentToolbar && (
-          <div className="absolute top-6 left-6 z-40 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 p-4">
+          <div className="absolute top-6 left-6 z-[100] bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 p-4 max-w-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-900">Components</h3>
               <button
                 onClick={() => setShowComponentToolbar(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded"
               >
                 ×
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3 w-64">
+            <div className="grid grid-cols-2 gap-2 w-full max-w-[280px]">
               {componentLibrary.map((component) => (
                 <button
                   key={component.type}
                   onClick={() => addComponent(component.type)}
-                  className="flex items-center space-x-2 p-3 bg-white rounded-xl border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all group"
+                  className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all group text-left"
                 >
-                  <div className={`w-8 h-8 ${component.color} rounded-lg flex items-center justify-center text-white text-sm group-hover:scale-110 transition-transform`}>
+                  <div className={`w-6 h-6 ${component.color} rounded-md flex items-center justify-center text-white text-xs group-hover:scale-110 transition-transform flex-shrink-0`}>
                     {component.icon}
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{component.label}</span>
+                  <span className="text-xs font-medium text-gray-700 truncate">{component.label}</span>
                 </button>
               ))}
             </div>
             <button
               onClick={() => addComponent('custom')}
-              className="w-full mt-3 p-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center space-x-2"
+              className="w-full mt-3 p-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center space-x-2 text-sm"
             >
-              <PlusIcon className="w-5 h-5" />
+              <PlusIcon className="w-4 h-4" />
               <span className="font-medium">Custom Component</span>
             </button>
           </div>
@@ -1057,7 +1057,7 @@ module.exports = app;`}
 
         {/* Enhanced Properties Panel */}
         {selectedNode && (
-          <div className="absolute top-6 right-6 w-96 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 z-30 max-h-[80vh] overflow-y-auto">
+          <div className="absolute top-6 right-6 w-96 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 z-[150] max-h-[80vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-gray-900 flex items-center">
@@ -1066,7 +1066,7 @@ module.exports = app;`}
                 </h3>
                 <button
                   onClick={() => setSelectedNode(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded"
                 >
                   ×
                 </button>
@@ -1251,8 +1251,8 @@ module.exports = app;`}
 
         {/* AI Chat Panel - Fixed positioning with proper z-index */}
         {showAgentChat && (
-          <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 z-[9999] flex flex-col">
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 z-[200] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white/90 rounded-t-2xl">
               <div className="flex items-center space-x-2">
                 <SparklesIcon className="w-5 h-5 text-purple-500" />
                 <span className="font-bold text-gray-900">🤖 Archie - Your Architecture Buddy</span>
@@ -1262,7 +1262,7 @@ module.exports = app;`}
               </div>
               <button
                 onClick={() => setShowAgentChat(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded"
               >
                 ×
               </button>
@@ -1433,11 +1433,12 @@ module.exports = app;`}
           </div>
         ))}
 
-        {/* Quick Add Button */}
+        {/* Floating Add Component Button */}
         {!showComponentToolbar && (
           <button
             onClick={() => setShowComponentToolbar(true)}
-            className="absolute bottom-6 left-6 w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all transform hover:scale-110 flex items-center justify-center z-40"
+            className="absolute bottom-6 left-6 w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all transform hover:scale-110 flex items-center justify-center z-[90]"
+            title="Add Components"
           >
             <PlusIcon className="w-8 h-8" />
           </button>

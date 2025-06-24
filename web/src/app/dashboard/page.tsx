@@ -80,7 +80,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full p-6">
       <NewProjectModal open={showNewProject} onClose={() => setShowNewProject(false)} onCreate={handleCreateProject} />
       <RenameProjectModal
         open={renameModal.open}
@@ -94,27 +94,47 @@ export default function DashboardPage() {
         onDelete={() => deleteModal.id && handleDeleteProject(deleteModal.id)}
         projectName={deleteModal.id ? (projects.find(p => p.id === deleteModal.id)?.name || '') : ''}
       />
-      {/* Tabs */}
-      <div className="flex items-center gap-6 mb-8">
-        {tabs.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={`text-base font-medium pb-2 border-b-2 transition-all ${activeTab === tab.value ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center space-x-3">
-          <Link href="/dashboard/design">
-            <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-blue-600 text-white font-semibold rounded-lg px-5 py-2 shadow hover:brightness-110 transition">
-              <PaintBrushIcon className="w-4 h-4" />
-              <span>Design Canvas</span>
+      
+      {/* Header Section with better spacing */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600 mt-1">
+              {activeWorkspace ? `${activeWorkspace.name} workspace` : 'Select a workspace to get started'}
+            </p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Link href="/dashboard/design">
+              <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-blue-600 text-white font-semibold rounded-lg px-6 py-3 shadow hover:brightness-110 transition">
+                <PaintBrushIcon className="w-5 h-5" />
+                <span>Design Canvas</span>
+              </button>
+            </Link>
+            <button onClick={() => setShowNewProject(true)} className="bg-gradient-to-r from-green-300 via-blue-400 to-purple-400 text-white font-semibold rounded-lg px-6 py-3 shadow hover:brightness-110 transition">
+              + New Project
             </button>
-          </Link>
-          <button onClick={() => setShowNewProject(true)} className="bg-gradient-to-r from-green-300 via-blue-400 to-purple-400 text-white font-semibold rounded-lg px-5 py-2 shadow hover:brightness-110 transition">+ New Project</button>
+          </div>
+        </div>
+        
+        {/* Tabs with better spacing */}
+        <div className="flex items-center gap-8 border-b border-gray-200">
+          {tabs.map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={`text-base font-medium pb-3 border-b-2 transition-all ${
+                activeTab === tab.value 
+                  ? 'border-blue-500 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
+
       {/* Project grid */}
       {loading ? (
         <div className="text-gray-400 text-center py-12">Loading projects...</div>
