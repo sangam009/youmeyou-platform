@@ -5,7 +5,7 @@ const logger = require('../utils/logger');
 class A2AService {
   constructor() {
     // Initialize Google Gemini AI
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY || 'demo-key');
+    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || 'demo-key');
     
     // Initialize A2A client (commented out until SDK is available)
     // this.a2aClient = new A2AClient({

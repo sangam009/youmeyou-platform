@@ -16,7 +16,7 @@ exports.listProjects = async (req, res) => {
     const projects = await Project.find({ 
       workspaceId, 
       userId 
-    }).select('id name workspaceId userId template templateConfig createdAt updatedAt');
+    });
     
     res.json(projects);
   } catch (error) {
