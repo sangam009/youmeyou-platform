@@ -15,6 +15,11 @@ services:
       # /api/design -> design-service:4000  
       # /api/payment -> payment-service:6000
       
+      # Explicitly set API service URLs to use proxy routes
+      NEXT_PUBLIC_AUTH_SERVICE_URL: /api/auth
+      NEXT_PUBLIC_DESIGN_SERVICE_URL: /api/design
+      NEXT_PUBLIC_PAYMENT_SERVICE_URL: /api/payment
+      
       # Firebase configuration (using actual values from config)
       NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyC8aNECZ373-VSaO6rnGNJXM3Dexf49YhE
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: sangam-21934.firebaseapp.com

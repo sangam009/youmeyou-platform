@@ -60,6 +60,21 @@ export const config = {
   environment: {
     isProduction,
     hostname,
-    nodeEnv: process.env.NODE_ENV
+    nodeEnv: process.env.NODE_ENV,
+    // Debug info
+    authServiceUrl: (() => {
+      if (process.env.NEXT_PUBLIC_AUTH_SERVICE_URL) {
+        return process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
+      }
+      if (isProduction) return "/api/auth";
+      return "http://localhost:3001";
+    })(),
+    designServiceUrl: (() => {
+      if (process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL) {
+        return process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL;
+      }
+      if (isProduction) return "/api/design";
+      return "http://localhost:4000";
+    })()
   }
 }; 
