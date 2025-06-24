@@ -54,7 +54,10 @@ get_current_ip() {
 
 # Function to get current firewall rule source ranges
 get_current_ranges() {
-    gcloud compute firewall-rules describe "$RULE_NAME" --format="value(sourceRanges[])" 2>/dev/null || echo ""
+    local ranges
+    ranges=$(gcloud compute firewall-rules describe "$RULE_NAME" --format="value(sourceRanges[])" 2>/dev/null || echo "")
+    # Convert semicolons to commas for proper formatting
+    echo "$ranges" | tr ';' ','
 }
 
 # Function to check if rule exists
