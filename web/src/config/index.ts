@@ -16,18 +16,50 @@ export const config = {
   },
   auth: {
     serviceUrl: (() => {
+      // Check for explicit environment variable first
+      if (process.env.NEXT_PUBLIC_AUTH_SERVICE_URL) {
+        return process.env.NEXT_PUBLIC_AUTH_SERVICE_URL;
+      }
+      
       // For production: use nginx proxy routes (secure, goes through HTTPS)
       if (isProduction) return "/api/auth";
+      
       // For local development: direct service access
       return "http://localhost:3001";
     })()
   },
   api: {
     designService: (() => {
+      // Check for explicit environment variable first
+      if (process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL) {
+        return process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL;
+      }
+      
       // For production: use nginx proxy routes (secure, goes through HTTPS)  
       if (isProduction) return "/api/design";
+      
       // For local development: direct service access
       return "http://localhost:4000";
+    })(),
+    
+    paymentService: (() => {
+      // Check for explicit environment variable first
+      if (process.env.NEXT_PUBLIC_PAYMENT_SERVICE_URL) {
+        return process.env.NEXT_PUBLIC_PAYMENT_SERVICE_URL;
+      }
+      
+      // For production: use nginx proxy routes (secure, goes through HTTPS)  
+      if (isProduction) return "/api/payment";
+      
+      // For local development: direct service access
+      return "http://localhost:6000";
     })()
+  },
+  
+  // Environment info for debugging
+  environment: {
+    isProduction,
+    hostname,
+    nodeEnv: process.env.NODE_ENV
   }
 }; 

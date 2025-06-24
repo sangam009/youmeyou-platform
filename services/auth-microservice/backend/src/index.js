@@ -42,11 +42,31 @@ const connectRedis = async () => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// CORS configuration - support both development and production
+const getCorsOrigins = () => {
+  const corsOrigin = process.env.CORS_ORIGIN;
+  if (corsOrigin) {
+    return corsOrigin.split(',').map(origin => origin.trim());
+  }
+  
+  // Default development origins
+  return [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'http://localhost:4000',
+    'https://youmeyou.ai',
+    'https://staging.youmeyou.ai'
+  ];
+};
+
 // Middleware
 app.use(helmet()); // Security headers
 app.use(cors({
-  origin: ['http://localhost:3001', 'http://localhost:3000', 'http://localhost:4000'],
-  credentials: true
+  origin: getCorsOrigins(),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200 // Support legacy browsers
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
