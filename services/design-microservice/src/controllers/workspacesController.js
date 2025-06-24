@@ -12,7 +12,7 @@ exports.listWorkspaces = async (req, res) => {
     logger.info(`Listing workspaces for user: ${userId}`);
     
     // Get workspaces from database
-    const workspaces = await Workspace.find({ userId }).select('id name userId createdAt updatedAt');
+    const workspaces = await Workspace.find({ userId });
     
     res.json(workspaces);
   } catch (error) {
