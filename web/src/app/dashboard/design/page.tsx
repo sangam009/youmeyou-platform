@@ -322,20 +322,12 @@ function DesignCanvasPage() {
         }
       };
 
-      // Call the A2A service
-      const response = await fetch('http://localhost:4000/agents/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(task)
+      // Call the A2A service using centralized API
+      const result = await askAgent({
+        content: `Generate production-ready code for ${node.data.label}`,
+        canvasState: { nodes, edges },
+        agentId: 'code-001' // Use code generation agent
       });
-
-      if (!response.ok) {
-        throw new Error(`A2A service error: ${response.status}`);
-      }
-
-      const result = await response.json();
       
       // Display the generated code (you can enhance this with a modal or dedicated view)
       console.log('Generated code:', result);
