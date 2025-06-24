@@ -320,71 +320,69 @@ class A2AService {
   }
 
   buildEnhancedPrompt(agent, task) {
-    const context = this.buildContextFromCanvas(task.canvasState);
+    const context = this.buildSimpleContextFromCanvas(task.canvasState);
     const componentInfo = this.extractComponentInfo(task.component);
     
     return `${agent.systemPrompt}
 
-CURRENT TASK CONTEXT:
-- Task Type: ${task.type}
-- User Query: ${task.content}
-- Component Focus: ${componentInfo.name} (${componentInfo.type})
+TASK: ${task.type}
+USER REQUEST: ${task.content}
 
-CANVAS CONTEXT:
+CURRENT COMPONENT: ${componentInfo.name} (${componentInfo.type})
+${componentInfo.description ? `Description: ${componentInfo.description}` : ''}
+
+ARCHITECTURE CONTEXT:
 ${context}
 
-COMPONENT DETAILS:
-- Name: ${componentInfo.name}
-- Type: ${componentInfo.type}
-- Description: ${componentInfo.description}
-- Functional Requirements: ${componentInfo.functionalRequirements}
-- Current Properties: ${JSON.stringify(componentInfo.properties, null, 2)}
+Please provide your analysis and recommendations in a clear, structured format. Focus on:
+1. Key insights about the current architecture
+2. Specific recommendations for improvement
+3. Any code or configuration suggestions
+4. Next steps to implement changes
 
-REQUESTED OUTPUT FORMAT:
-Provide a comprehensive response in the following JSON structure:
-{
-  "analysis": "Detailed analysis of the current component/architecture",
-  "suggestions": [
-    {
-      "title": "Suggestion title",
-      "description": "Detailed description",
-      "priority": "high|medium|low",
-      "implementation": "How to implement this suggestion"
+Respond in a clear, actionable format that helps the user improve their system design.`;
+  }
+
+  // Simplified context builder for faster responses
+  buildSimpleContextFromCanvas(canvasState) {
+    if (!canvasState || !canvasState.nodes) return "No architecture components available";
+    
+    const nodes = canvasState.nodes;
+    const edges = canvasState.edges || [];
+    
+    let context = `Architecture Overview:\n`;
+    context += `- Components: ${nodes.length}\n`;
+    context += `- Connections: ${edges.length}\n`;
+    
+    // List main components
+    if (nodes.length > 0) {
+      context += `\nMain Components:\n`;
+      nodes.slice(0, 5).forEach(node => { // Limit to first 5 components
+        context += `• ${node.data.label} (${node.data.serviceType || 'component'})\n`;
+      });
+      
+      if (nodes.length > 5) {
+        context += `... and ${nodes.length - 5} more components\n`;
+      }
     }
-  ],
-  "actions": [
-    {
-      "type": "ADD_COMPONENT|UPDATE_COMPONENT|CONNECT_COMPONENTS|REMOVE_COMPONENT|OPTIMIZE_LAYOUT|GENERATE_CODE|SUGGEST_IMPROVEMENTS|VALIDATE_ARCHITECTURE",
-      "label": "Action description",
-      "serviceType": "microservice|database|api|security|cache|loadbalancer|queue|external",
-      "description": "Detailed action description",
-      "priority": "critical|high|medium|low",
-      "position": {"x": 300, "y": 200},
-      "properties": {"key": "value"},
-      "sourceId": "source-component-id",
-      "targetId": "target-component-id",
-      "componentId": "component-to-modify",
-      "updates": {"property": "new-value"}
+    
+    // Basic connection info
+    if (edges.length > 0) {
+      context += `\nKey Connections:\n`;
+      edges.slice(0, 3).forEach(edge => { // Limit to first 3 connections
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (sourceNode && targetNode) {
+          context += `• ${sourceNode.data.label} → ${targetNode.data.label}\n`;
+        }
+      });
+      
+      if (edges.length > 3) {
+        context += `... and ${edges.length - 3} more connections\n`;
+      }
     }
-  ],
-  "codeGeneration": {
-    "language": "javascript|python|go|java",
-    "framework": "express|fastapi|gin|spring",
-    "code": "Generated production-ready code",
-    "dependencies": ["list", "of", "dependencies"],
-    "deploymentConfig": "Docker/K8s configuration"
-  },
-  "optimizations": {
-    "performance": ["performance improvements"],
-    "security": ["security enhancements"],
-    "scalability": ["scalability recommendations"]
-  },
-  "nextSteps": ["actionable next steps"]
-}
-
-IMPORTANT: When you identify improvements or suggestions, include corresponding actions in the "actions" array that I can execute to implement those changes directly on the canvas. This makes me not just an advisor but an active agent that can modify the architecture.
-
-Focus on providing production-ready, enterprise-grade solutions.`;
+    
+    return context;
   }
 
   buildContextFromCanvas(canvasState) {
@@ -657,6 +655,65 @@ Focus on providing production-ready, enterprise-grade solutions.`;
       },
       raw: text
     };
+  }
+
+  extractSuggestions(text) {
+    try {
+      // Try to find suggestions in various formats
+      const suggestions = [];
+      
+      // Look for numbered suggestions
+      const numberedMatches = text.match(/\d+\.\s*([^\n]+)/g);
+      if (numberedMatches) {
+        numberedMatches.forEach(match => {
+          const suggestion = match.replace(/^\d+\.\s*/, '').trim();
+          if (suggestion.length > 10) { // Filter out short/irrelevant matches
+            suggestions.push({
+              title: suggestion.substring(0, 50) + (suggestion.length > 50 ? '...' : ''),
+              description: suggestion,
+              priority: 'medium',
+              implementation: 'See detailed analysis above'
+            });
+          }
+        });
+      }
+      
+      // Look for bullet point suggestions
+      const bulletMatches = text.match(/[-•*]\s*([^\n]+)/g);
+      if (bulletMatches && suggestions.length < 3) {
+        bulletMatches.slice(0, 3).forEach(match => {
+          const suggestion = match.replace(/^[-•*]\s*/, '').trim();
+          if (suggestion.length > 10) {
+            suggestions.push({
+              title: suggestion.substring(0, 50) + (suggestion.length > 50 ? '...' : ''),
+              description: suggestion,
+              priority: 'medium',
+              implementation: 'Follow the recommendation provided'
+            });
+          }
+        });
+      }
+      
+      // If no structured suggestions found, create a generic one
+      if (suggestions.length === 0) {
+        suggestions.push({
+          title: 'AI Analysis Completed',
+          description: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
+          priority: 'medium',
+          implementation: 'Review the full analysis for details'
+        });
+      }
+      
+      return suggestions.slice(0, 5); // Limit to 5 suggestions max
+    } catch (error) {
+      logger.error('Error extracting suggestions:', error);
+      return [{
+        title: 'Analysis Available',
+        description: 'AI analysis completed successfully',
+        priority: 'low',
+        implementation: 'Review the response for details'
+      }];
+    }
   }
 
   extractSection(text, sectionName) {
