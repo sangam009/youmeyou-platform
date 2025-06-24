@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { config } from '../config';
 import axios from 'axios';
 
 function SessionTest({ user }) {
@@ -23,7 +24,7 @@ function SessionTest({ user }) {
     setCheckResponse(null);
     
     try {
-      const response = await axios.get('http://localhost:3000/session/check', {
+      const response = await axios.get(`${config.apiBaseUrl}/session/check`, {
         withCredentials: true
       });
       
@@ -47,7 +48,7 @@ function SessionTest({ user }) {
     setValidateResponse(null);
     
     try {
-      const response = await axios.post('http://localhost:3000/session/validate', {
+      const response = await axios.post(`${config.apiBaseUrl}/session/validate`, {
         sessionId
       }, {
         withCredentials: true

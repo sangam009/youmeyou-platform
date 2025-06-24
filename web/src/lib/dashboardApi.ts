@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { config } from '../config';
 
 const api = axios.create({
-  baseURL: 'http://localhost:4000', // Updated to backend port
+  baseURL: config.api.designService,
   withCredentials: true,
 });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { config } from '../config';
 import axios from 'axios';
 
 function UserProfile({ user, setUser }) {
@@ -22,7 +23,7 @@ function UserProfile({ user, setUser }) {
 
     const fetchUserData = async () => {
       try {
-        const response = await axios.get(`http://localhost:3000/user/${user.uuid}`, {
+        const response = await axios.get(`${config.apiBaseUrl}/user/${user.uuid}`, {
           withCredentials: true
         });
         
@@ -64,14 +65,14 @@ function UserProfile({ user, setUser }) {
         payload: formData
       };
 
-      const response = await axios.patch('http://localhost:3000/user/update', payload, {
+      const response = await axios.patch(`${config.apiBaseUrl}/user/update`, payload, {
         withCredentials: true
       });
 
       setUpdateResponse(response.data);
       
       // Refresh user data
-      const userResponse = await axios.get(`http://localhost:3000/user/${user.uuid}`, {
+      const userResponse = await axios.get(`${config.apiBaseUrl}/user/${user.uuid}`, {
         withCredentials: true
       });
       

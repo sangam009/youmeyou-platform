@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup } from 'firebase/auth';
+import { config } from './config';
 import axios from 'axios';
 
 // Components
@@ -19,7 +20,7 @@ function App() {
     // Check if user is logged in
     const checkSession = async () => {
       try {
-        const response = await axios.get('http://localhost:3000/session/check', { withCredentials: true });
+        const response = await axios.get(`${config.apiBaseUrl}/session/check`, { withCredentials: true });
         if (response.data.status === 'success') {
           setUser(response.data.user);
         }
@@ -41,7 +42,7 @@ function App() {
       await auth.signOut();
       
       // Then, call backend logout endpoint to destroy session
-      const response = await axios.post('http://localhost:3000/session/logout', {}, {
+      const response = await axios.post(`${config.apiBaseUrl}/session/logout`, {}, {
         withCredentials: true
       });
       

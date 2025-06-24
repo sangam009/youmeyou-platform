@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { config } from '../config';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_DESIGN_API_URL || 'http://localhost:4000';
+const API_BASE_URL = config.api.designService;
 
 const canvasApi = axios.create({
   baseURL: API_BASE_URL,

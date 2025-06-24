@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { config } from '../config';
 import axios from 'axios';
 
 function HomePage({ user }) {
@@ -8,7 +9,7 @@ function HomePage({ user }) {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await axios.get('http://localhost:3000/health');
+        const response = await axios.get(`${config.apiBaseUrl}/health`);
         console.log(response.data);
         setHealth(response.data);
       } catch (error) {

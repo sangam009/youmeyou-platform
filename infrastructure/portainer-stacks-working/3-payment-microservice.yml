@@ -66,7 +66,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: payment_redis_2024!
       JWT_SECRET: youmeyou-payment-jwt-secret-staging-2024
-      CORS_ORIGIN: "http://34.93.209.77,https://34.93.209.77,http://staging.youmeyou.ai,https://staging.youmeyou.ai,http://youmeyou.ai,https://youmeyou.ai,http://archie.youmeyou.ai,https://archie.youmeyou.ai"
+      CORS_ORIGIN: "http://localhost:3000,https://staging.youmeyou.ai,https://youmeyou.ai,http://youmeyou-codaloo-web:3000,http://localhost:3002"
       AUTH_SERVICE_URL: http://youmeyou-auth-service:3001
       # Firebase Configuration (Required for payment service)
       FIREBASE_TYPE: service_account
@@ -89,10 +89,11 @@ services:
       - youmeyou-data
       - youmeyou-internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:

@@ -54,7 +54,7 @@ const validateSession = async (sessionId) => {
   }
   
   try {
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3000';
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
     const endpoint = process.env.SESSION_VALIDATION_ENDPOINT || '/session/validate';
     const url = `${authServiceUrl}${endpoint}`;
     
@@ -108,7 +108,7 @@ const validateSession = async (sessionId) => {
  */
 const isAuthServiceAccessible = async () => {
   try {
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3000';
+    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
     await axios.get(`${authServiceUrl}/health`, { timeout: 2000 });
     return true;
   } catch (error) {

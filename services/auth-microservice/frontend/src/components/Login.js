@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
+import { config } from '../config';
 import axios from 'axios';
 
 function Login({ setUser }) {
@@ -39,7 +40,7 @@ function Login({ setUser }) {
       };
       
       // Send the user data to the auth service
-      const response = await axios.post('http://localhost:3000/user/create', payload, {
+      const response = await axios.post(`${config.apiBaseUrl}/user/create`, payload, {
         withCredentials: true
       });
       
@@ -47,7 +48,7 @@ function Login({ setUser }) {
       
       if (response.data.status === 'success') {
         // Get user data from session
-        const sessionResponse = await axios.get('http://localhost:3000/session/check', {
+        const sessionResponse = await axios.get(`${config.apiBaseUrl}/session/check`, {
           withCredentials: true
         });
         
