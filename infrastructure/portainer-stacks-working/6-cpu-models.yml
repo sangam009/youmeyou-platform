@@ -41,7 +41,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=8000
-      - FLAN_T5_URL=http://flan-t5-service-prod:8001
+      - MISTRAL_7B_URL=http://mistral-7b-service-prod:8001
       - DISTILBERT_URL=http://distilbert-service-prod:8002
       - CODEBERT_URL=http://codebert-service-prod:8003
     networks:
@@ -67,41 +67,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # FLAN-T5 Text Generation Service
-  flan-t5-service-prod:
-    image: registry-staging.youmeyou.ai/youmeyou/cpu-models-flan-t5:latest
-    container_name: flan-t5-service-prod
-    restart: unless-stopped
-    environment:
-      - MODEL_NAME=google/flan-t5-small
-      - PORT=8001
-      - MAX_LENGTH=512
-      - PYTHONUNBUFFERED=1
-    networks:
-      - cpu-models-internal
-    volumes:
-      - flan-t5-models:/app/models
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 180s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # DistilBERT Classification Service
   distilbert-service-prod:
     image: registry-staging.youmeyou.ai/youmeyou/cpu-models-distilbert:latest
     container_name: distilbert-service-prod
@@ -168,6 +133,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Mistral 7B Text Generation Service
+  mistral-7b-service-prod:
+    image: registry-staging.youmeyou.ai/youmeyou/cpu-models-mistral-7b:latest
+    container_name: mistral-7b-service-prod
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=mistralai/Mistral-7B-v0.1
+      - PORT=8001
+      - MAX_LENGTH=512
+      - PYTHONUNBUFFERED=1
+      - HF_TOKEN=${HF_TOKEN}
+    networks:
+      - cpu-models-internal
+    volumes:
+      - mistral-7b-models:/app/models
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 180s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   youmeyou-internal:
     external: true
@@ -176,9 +176,10 @@ networks:
     internal: false
 
 volumes:
-  flan-t5-models:
     driver: local
   distilbert-models:
     driver: local
   codebert-models:
+    driver: local
+  mistral-7b-models:
     driver: local 

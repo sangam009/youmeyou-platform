@@ -7,7 +7,7 @@ Simple Flask API for text generation using FLAN-T5
 import os
 import logging
 from flask import Flask, request, jsonify
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForCausalLM
 import torch
 import time
 
@@ -22,26 +22,51 @@ model = None
 tokenizer = None
 model_loaded = False
 
+# Model configuration
+MODEL_NAME = "mistralai/Mistral-7B-v0.1"  # Using Mistral 7B instead of FLAN-T5
+CACHE_DIR = "/app/models"
+
 def load_model():
     """Load FLAN-T5 model and tokenizer"""
     global model, tokenizer, model_loaded
     
     try:
-        model_name = os.getenv('MODEL_NAME', 'google/flan-t5-small')
-        logger.info(f"Loading model: {model_name}")
+        logger.info(f"Loading model: {MODEL_NAME}")
         
-        # Load tokenizer and model
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float32,  # Use float32 for CPU
+        # Set environment variables for better caching
+        os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+        os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
+        
+        # HuggingFace token for gated models
+        hf_token = os.getenv('HF_TOKEN')
+        if not hf_token:
+            logger.error("HF_TOKEN environment variable is required for gated models")
+            model_loaded = False
+            return
+        
+        # Load tokenizer and model with token
+        tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_NAME, 
+            cache_dir=CACHE_DIR,
+            token=hf_token
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME, 
+            cache_dir=CACHE_DIR,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            token=hf_token
         )
         
+        # Set pad token if not exists
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        
         model_loaded = True
-        logger.info("FLAN-T5 model loaded successfully")
+        logger.info("Mistral model loaded successfully!")
         
     except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
+        logger.error(f"Error loading model: {e}")
         model_loaded = False
 
 @app.route('/health', methods=['GET'])
@@ -50,7 +75,7 @@ def health():
     return jsonify({
         'status': 'healthy' if model_loaded else 'loading',
         'model_loaded': model_loaded,
-        'model_name': os.getenv('MODEL_NAME', 'google/flan-t5-small'),
+        'model_name': MODEL_NAME,
         'timestamp': time.time()
     })
 
@@ -102,7 +127,7 @@ def generate():
                 'generated_text': generated_text,
                 'prompt': prompt,
                 'generation_time': generation_time,
-                'model': 'flan-t5-small'
+                'model': MODEL_NAME
             }
         })
         
@@ -117,7 +142,7 @@ def generate():
 def info():
     """Model information endpoint"""
     return jsonify({
-        'model_name': os.getenv('MODEL_NAME', 'google/flan-t5-small'),
+        'model_name': MODEL_NAME,
         'model_loaded': model_loaded,
         'capabilities': ['text-generation', 'question-answering', 'summarization'],
         'max_length': int(os.getenv('MAX_LENGTH', 512)),
