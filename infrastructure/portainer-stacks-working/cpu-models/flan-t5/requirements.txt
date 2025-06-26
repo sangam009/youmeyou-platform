@@ -1,0 +1,4 @@
+flask==2.3.3
+transformers==4.21.0
+torch==2.0.1+cpu
+requests==2.31.0 

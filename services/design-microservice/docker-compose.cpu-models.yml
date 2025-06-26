@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # CPU Models API Gateway
+  cpu-models-gateway:
+    build:
+      context: ./cpu-models
+      dockerfile: Dockerfile.gateway
+    container_name: cpu-models-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - FLAN_T5_URL=http://flan-t5-service:8001
+      - DISTILBERT_URL=http://distilbert-service:8002
+      - CODEBERT_URL=http://codebert-service:8003
+    depends_on:
+      - flan-t5-service
+      - distilbert-service
+      - codebert-service
+    networks:
+      - cpu-models-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  # FLAN-T5 Small Model Service
+  flan-t5-service:
+    image: huggingface/transformers-pytorch-cpu:latest
+    container_name: flan-t5-service
+    ports:
+      - "8001:8001"
+    environment:
+      - MODEL_NAME=google/flan-t5-small
+      - MODEL_TASK=text2text-generation
+      - PORT=8001
+      - MAX_LENGTH=512
+      - CACHE_DIR=/app/model_cache
+    volumes:
+      - ./cpu-models/flan-t5:/app
+      - flan-t5-cache:/app/model_cache
+    networks:
+      - cpu-models-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+    command: python app.py
+
+  # DistilBERT Service for Classification
+  distilbert-service:
+    image: huggingface/transformers-pytorch-cpu:latest
+    container_name: distilbert-service
+    ports:
+      - "8002:8002"
+    environment:
+      - MODEL_NAME=distilbert-base-uncased
+      - MODEL_TASK=classification
+      - PORT=8002
+      - MAX_LENGTH=512
+      - CACHE_DIR=/app/model_cache
+    volumes:
+      - ./cpu-models/distilbert:/app
+      - distilbert-cache:/app/model_cache
+    networks:
+      - cpu-models-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.75'
+    command: python app.py
+
+  # CodeBERT Service for Code Analysis
+  codebert-service:
+    image: huggingface/transformers-pytorch-cpu:latest
+    container_name: codebert-service
+    ports:
+      - "8003:8003"
+    environment:
+      - MODEL_NAME=microsoft/codebert-base
+      - MODEL_TASK=feature-extraction
+      - PORT=8003
+      - MAX_LENGTH=512
+      - CACHE_DIR=/app/model_cache
+    volumes:
+      - ./cpu-models/codebert:/app
+      - codebert-cache:/app/model_cache
+    networks:
+      - cpu-models-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '0.75'
+    command: python app.py
+
+networks:
+  cpu-models-network:
+    driver: bridge
+    name: cpu-models-network
+
+volumes:
+  flan-t5-cache:
+    driver: local
+  distilbert-cache:
+    driver: local
+  codebert-cache:
+    driver: local 
