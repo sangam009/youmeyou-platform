@@ -1,4 +1,4 @@
-import logger from '../../utils/logger.js';
+import logger from '/app/src/utils/logger.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 class ProjectManagerAgent {
