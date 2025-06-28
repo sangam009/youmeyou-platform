@@ -34,7 +34,7 @@ declare -A SERVICES=(
     ["auth"]="services/auth-microservice/backend"
     ["design"]="services/design-microservice"  
     ["payment"]="services/payment-microservice"
-    ["codaloo-web"]="codaloo/web"
+    ["codaloo-web"]="web"
 )
 
 # Clean up previous builds
