@@ -3,7 +3,7 @@ export const config = {
   port: process.env.PORT || 4000,
   a2a: {
     apiKey: process.env.A2A_API_KEY,
-    baseUrl: process.env.A2A_BASE_URL || 'http://localhost:3000'
+    baseUrl: process.env.A2A_BASE_URL || 'http://localhost:4000'
   },
   api: {
     geminiEndpoint: process.env.GEMINI_ENDPOINT || 'http://localhost:8000/gemini',
@@ -18,15 +18,11 @@ export const config = {
     origins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001']
   },
   mongodb: {
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/design-service'
+    uri: process.env.MONGODB_URI || 'mongodb://design_admin:design_mongo_2024!@localhost:27017/design_service?authSource=admin'
   },
-  mysql: {
-    host: process.env.MYSQL_HOST || 'localhost',
-    user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || '',
-    database: process.env.MYSQL_DATABASE || 'design_service'
-  },
-  server: {
-    port: process.env.PORT || 4000
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD || 'design_redis_2024!'
   }
 }; 

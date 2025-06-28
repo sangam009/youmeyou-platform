@@ -16,7 +16,7 @@ class A2AService {
     return {
       name: 'YouMeYou Design Agents',
       description: 'AI-powered system design and architecture agents for building complete applications',
-      url: `http://localhost:${config.port}`,
+      url: config.a2a.baseUrl,
       version: '1.0.0',
       capabilities: {
         streaming: true,
