@@ -1,6 +1,6 @@
 import express from 'express';
-import agentController from '/app/src/controllers/agentController.js';
-import auth from '/app/src/middleware/auth.js';
+import agentController from '../controllers/agentController.js';
+import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ router.use(auth);
 // Enhanced A2A endpoints
 router.post('/task', agentController.routeTask);
 router.post('/chat', agentController.chat);
-router.post('/generate-code', agentController.generateCode);
+router.post('/generate', agentController.generateCode);
 router.post('/analyze', agentController.analyzeCode);
 router.get('/status', agentController.getAgents);
 

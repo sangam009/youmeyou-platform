@@ -1,10 +1,10 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/config/index.js';
-import logger from '/app/src/utils/logger.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class ArchitectureDesignerAgent {
-  constructor(a2aClient) {
-    this.a2aClient = a2aClient;
+  constructor() {
+    this.client = new A2AClient(config.a2a.baseUrl);
     this.modelEndpoints = {
       gemini: config.api.geminiEndpoint,
       flanT5: config.api.flanT5Endpoint,
@@ -41,7 +41,7 @@ class ArchitectureDesignerAgent {
 
   async performInitialAnalysis(requirements) {
     // Use DistilBERT for quick classification and analysis
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.distilbert,
       message: {
         role: "system",
@@ -54,7 +54,7 @@ class ArchitectureDesignerAgent {
 
   async detectArchitecturePatterns(requirements, initialAnalysis) {
     // Use CodeBERT for pattern detection
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -68,7 +68,7 @@ class ArchitectureDesignerAgent {
 
   async generateArchitectureDesign(requirements, patterns, context) {
     // Use Gemini for complex architecture design
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -92,7 +92,7 @@ class ArchitectureDesignerAgent {
 
   async generateDocumentation(architectureDesign) {
     // Use FLAN-T5 for documentation generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.flanT5,
       message: {
         role: "system",
@@ -106,7 +106,7 @@ class ArchitectureDesignerAgent {
   // Helper method to generate Mermaid diagrams
   async generateArchitectureDiagram(design) {
     // Use Gemini for complex diagram generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -120,7 +120,7 @@ class ArchitectureDesignerAgent {
   // Method to analyze scalability
   async analyzeScalability(design) {
     // Use Gemini for complex scalability analysis
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -141,7 +141,7 @@ class ArchitectureDesignerAgent {
   // Method to suggest optimizations
   async suggestOptimizations(design, scalabilityAnalysis) {
     // Use Gemini for complex optimization suggestions
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -160,6 +160,17 @@ class ArchitectureDesignerAgent {
       }
     }
     return suggestions;
+  }
+
+  async designArchitecture(requirements) {
+    try {
+      logger.info('Designing architecture for requirements:', requirements);
+      // TODO: Implement architecture design logic
+      return { status: 'Not implemented yet' };
+    } catch (error) {
+      logger.error('Error designing architecture:', error);
+      throw error;
+    }
   }
 }
 

@@ -1,19 +1,22 @@
 import express from 'express';
-import projectsController from '/app/src/controllers/projectsController.js';
-import auth from '/app/src/middleware/auth.js';
+import projectsController from '../controllers/projectsController.js';
+import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
-// GET /workspaces/:id/projects - List projects in workspace
-router.get('/workspaces/:id/projects', projectsController.listProjects);
+// GET /projects - List all projects
+router.get('/', auth, projectsController.listProjects.bind(projectsController));
 
-// POST /workspaces/:id/projects - Create new project
-router.post('/workspaces/:id/projects', projectsController.createProject);
+// POST /projects - Create new project
+router.post('/', auth, projectsController.createProject.bind(projectsController));
 
-// PATCH /projects/:id - Rename project
-router.patch('/:id', projectsController.renameProject);
+// GET /projects/:id - Get project by ID
+router.get('/:id', auth, projectsController.getProject.bind(projectsController));
+
+// PUT /projects/:id - Update project
+router.put('/:id', auth, projectsController.updateProject.bind(projectsController));
 
 // DELETE /projects/:id - Delete project
-router.delete('/:id', projectsController.deleteProject);
+router.delete('/:id', auth, projectsController.deleteProject.bind(projectsController));
 
 export default router;

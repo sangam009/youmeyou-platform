@@ -1,13 +1,15 @@
-import Workspace from '/app/src/models/workspace.js';
-import logger from '/app/src/utils/logger.js';
+import Workspace from '../models/workspace.js';
+import logger from '../utils/logger.js';
 
 class WorkspacesController {
   async listWorkspaces(req, res) {
     try {
       const userId = req.user?.userId;
+      
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
+      
       const workspaces = await Workspace.findByUserId(userId);
       res.json(workspaces);
     } catch (error) {
@@ -45,13 +47,8 @@ class WorkspacesController {
 
   async updateWorkspace(req, res) {
     try {
-      const userId = req.user?.userId;
       const { id } = req.params;
       const { name } = req.body;
-      
-      if (!userId) {
-        return res.status(401).json({ error: 'User not authenticated' });
-      }
       
       if (!name || name.trim() === '') {
         return res.status(400).json({ error: 'Workspace name is required' });
@@ -75,13 +72,7 @@ class WorkspacesController {
 
   async deleteWorkspace(req, res) {
     try {
-      const userId = req.user?.userId;
       const { id } = req.params;
-      
-      if (!userId) {
-        return res.status(401).json({ error: 'User not authenticated' });
-      }
-      
       const result = await Workspace.delete(id);
       
       if (!result) {

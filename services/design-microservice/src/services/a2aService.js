@@ -1,11 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { A2AClient } from '@a2a-js/sdk';
-import logger from '/app/src/utils/logger.js';
-import A2AAdapter from '/app/src/services/agents/A2AAdapter.js';
-import ProjectManagerAgent from '/app/src/services/agents/ProjectManagerAgent.js';
-import TechLeadAgent from '/app/src/services/agents/TechLeadAgent.js';
-import AgentOrchestrator from '/app/src/services/agents/AgentOrchestrator.js';
-import DynamicPromptingService from '/app/src/services/DynamicPromptingService.js';
+import logger from '../utils/logger.js';
+import A2AAdapter from './agents/A2AAdapter.js';
+import ProjectManagerAgent from './agents/ProjectManagerAgent.js';
+import TechLeadAgent from './agents/TechLeadAgent.js';
+import AgentOrchestrator from './agents/AgentOrchestrator.js';
+import DynamicPromptingService from './DynamicPromptingService.js';
 
 class A2AService {
   constructor() {
@@ -13,14 +13,10 @@ class A2AService {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || 'demo-key');
     
     // Initialize new agent system
-    this.agentAdapter = new A2AAdapter();
+    this.adapter = new A2AAdapter();
     
     // Initialize A2A client with streaming support
-    this.a2aClient = new A2AClient({
-      apiKey: process.env.A2A_API_KEY,
-      projectId: process.env.A2A_PROJECT_ID,
-      baseUrl: process.env.A2A_BASE_URL || 'http://localhost:4001'
-    });
+    this.a2aClient = new A2AClient(process.env.A2A_BASE_URL || 'http://localhost:4001');
     
     // Initialize agent system
     this.projectManager = new ProjectManagerAgent(this.a2aClient);
@@ -189,7 +185,7 @@ class A2AService {
       logger.info(`Routing task: ${task.type} with content: ${task.content?.substring(0, 100)}...`);
       
       // Use new agent system through adapter
-      const response = await this.agentAdapter.routeTask(task);
+      const response = await this.adapter.routeTask(task);
       
       // If the new system fails, fall back to old system
       if (!response) {
@@ -1600,4 +1596,5 @@ Respond in a clear, actionable format that helps the user improve their system d
   }
 }
 
-export default new A2AService();
+const a2aService = new A2AService();
+export default a2aService;

@@ -1,11 +1,11 @@
 import mongoose from 'mongoose';
-import logger from '/app/src/utils/logger.js';
-import Canvas from '/app/src/models/canvasModel.js';
-import CanvasContent from '/app/src/models/canvasContentModel.js';
+import logger from '../utils/logger.js';
+import Canvas from '../models/canvasModel.js';
+import CanvasContent from '../models/canvasContentModel.js';
 import { v4 as uuidv4 } from 'uuid';
-import ProjectMetadataModel from '/app/src/models/projectMetadataModel.js';
-import CanvasContentModel from '/app/src/models/canvasContentModel.js';
-import AgentOrchestrator from '/app/src/services/agents/AgentOrchestrator.js';
+import ProjectMetadataModel from '../models/projectMetadataModel.js';
+import CanvasContentModel from '../models/canvasContentModel.js';
+import AgentOrchestrator from './agents/AgentOrchestrator.js';
 
 class CanvasService {
   constructor() {
@@ -211,4 +211,5 @@ class CanvasService {
   }
 }
 
-export default CanvasService;
+const canvasService = new CanvasService();
+export default canvasService;

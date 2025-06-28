@@ -3,6 +3,8 @@ import a2aService from '../services/a2aService.js';
 import canvasService from '../services/canvasService.js';
 import logger from '../utils/logger.js';
 import dynamicPromptingRoutes from './dynamicPrompting.js';
+import canvasController from '../controllers/canvasController.js';
+import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -39,71 +41,10 @@ router.get('/stream', async (req, res) => {
 });
 
 // Create new canvas with streaming updates
-router.post('/', async (req, res) => {
-  try {
-    const { task, clientId } = req.body;
-    
-    if (!task || !clientId) {
-      return res.status(400).json({ error: 'task and clientId required' });
-    }
-
-    // Start streaming execution
-    const handleCanvasEvent = async (event) => {
-      if (event.type === 'canvas-update') {
-        try {
-          await canvasService.updateCanvas(clientId, event.data);
-        } catch (error) {
-          logger.error('Error updating canvas:', error);
-        }
-      }
-    };
-
-    await a2aService.executeWithStreaming(task, handleCanvasEvent);
-
-    res.json({ 
-      success: true, 
-      message: 'Canvas creation started',
-      streamUrl: `/api/canvas/stream?clientId=${clientId}&task=${encodeURIComponent(task)}`
-    });
-  } catch (error) {
-    logger.error('Error creating canvas:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+router.post('/', auth, canvasController.createCanvas.bind(canvasController));
 
 // Update canvas with streaming updates
-router.put('/:canvasId', async (req, res) => {
-  try {
-    const { canvasId } = req.params;
-    const { task, clientId } = req.body;
-    
-    if (!task || !clientId) {
-      return res.status(400).json({ error: 'task and clientId required' });
-    }
-
-    // Start streaming execution
-    const handleCanvasUpdate = async (event) => {
-      if (event.type === 'canvas-update') {
-        try {
-          await canvasService.updateCanvas(canvasId, event.data);
-        } catch (error) {
-          logger.error('Error updating canvas:', error);
-        }
-      }
-    };
-
-    await a2aService.executeWithStreaming(task, handleCanvasUpdate);
-
-    res.json({ 
-      success: true, 
-      message: 'Canvas update started',
-      streamUrl: `/api/canvas/stream?clientId=${clientId}&task=${encodeURIComponent(task)}`
-    });
-  } catch (error) {
-    logger.error('Error updating canvas:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+router.put('/:id', auth, canvasController.updateCanvas.bind(canvasController));
 
 // Design system architecture with streaming updates
 router.post('/architecture', async (req, res) => {
@@ -169,5 +110,8 @@ router.get('/architecture/:clientId', async (req, res) => {
 
 // Phase 3: Dynamic Prompting Routes
 router.use('/dynamic-prompting', dynamicPromptingRoutes);
+
+router.get('/:id', auth, canvasController.getCanvas.bind(canvasController));
+router.delete('/:id', auth, canvasController.deleteCanvas.bind(canvasController));
 
 export default router;

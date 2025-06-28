@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import logger from '/app/src/utils/logger.js';
+import logger from '../utils/logger.js';
 import mysql from 'mysql2/promise';
 
 // Database connection configuration
@@ -12,7 +12,28 @@ const dbConfig = {
 };
 
 const canvasSchema = new mongoose.Schema({
-  // ... existing code ...
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'Project'
+  },
+  content: {
+    type: Object,
+    default: {}
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 const Canvas = mongoose.model('Canvas', canvasSchema);

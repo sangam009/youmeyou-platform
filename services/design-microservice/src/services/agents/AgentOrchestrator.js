@@ -1,23 +1,18 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/config/index.js';
-import logger from '/app/src/utils/logger.js';
-import ArchitectureDesignerAgent from '/app/src/services/agents/ArchitectureDesignerAgent.js';
-import DatabaseDesignerAgent from '/app/src/services/agents/DatabaseDesignerAgent.js';
-import APIDesignerAgent from '/app/src/services/agents/APIDesignerAgent.js';
-import CodeGeneratorAgent from '/app/src/services/agents/CodeGeneratorAgent.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
+import ArchitectureDesignerAgent from './ArchitectureDesignerAgent.js';
+import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
+import APIDesignerAgent from './APIDesignerAgent.js';
+import CodeGeneratorAgent from './CodeGeneratorAgent.js';
 
 class AgentOrchestrator {
   constructor() {
-    this.a2aClient = new A2AClient({
-      timeout: config.api.requestTimeout,
-      streamTimeout: config.api.streamTimeout
-    });
-
-    // Initialize all agents
-    this.architectureDesigner = new ArchitectureDesignerAgent(this.a2aClient);
-    this.databaseDesigner = new DatabaseDesignerAgent(this.a2aClient);
-    this.apiDesigner = new APIDesignerAgent(this.a2aClient);
-    this.codeGenerator = new CodeGeneratorAgent(this.a2aClient);
+    this.client = new A2AClient(config.a2a.baseUrl);
+    this.architectureDesigner = new ArchitectureDesignerAgent();
+    this.databaseDesigner = new DatabaseDesignerAgent();
+    this.apiDesigner = new APIDesignerAgent();
+    this.codeGenerator = new CodeGeneratorAgent();
     
     // Task-to-model mapping
     this.taskModelMap = config.tasks;

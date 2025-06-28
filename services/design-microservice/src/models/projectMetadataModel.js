@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import logger from '/app/src/utils/logger.js';
+import logger from '../utils/logger.js';
 
 // MySQL Database connection configuration for metadata
 const dbConfig = {
@@ -329,6 +329,94 @@ class ProjectMetadataModel {
       await this.pool.end();
     } catch (error) {
       logger.error('Error closing database connection:', error);
+    }
+  }
+
+  static async findByProjectId(projectId) {
+    try {
+      const connection = await mysql.createConnection({
+        host: process.env.MYSQL_HOST,
+        user: process.env.MYSQL_USER,
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE
+      });
+
+      const [rows] = await connection.execute(
+        'SELECT * FROM project_metadata WHERE project_id = ?',
+        [projectId]
+      );
+
+      await connection.end();
+      return rows[0];
+    } catch (error) {
+      logger.error('Error finding project metadata:', error);
+      throw error;
+    }
+  }
+
+  static async create(data) {
+    try {
+      const connection = await mysql.createConnection({
+        host: process.env.MYSQL_HOST,
+        user: process.env.MYSQL_USER,
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE
+      });
+
+      const [result] = await connection.execute(
+        'INSERT INTO project_metadata (project_id, metadata) VALUES (?, ?)',
+        [data.projectId, JSON.stringify(data.metadata)]
+      );
+
+      await connection.end();
+      return { id: result.insertId, ...data };
+    } catch (error) {
+      logger.error('Error creating project metadata:', error);
+      throw error;
+    }
+  }
+
+  static async update(id, data) {
+    try {
+      const connection = await mysql.createConnection({
+        host: process.env.MYSQL_HOST,
+        user: process.env.MYSQL_USER,
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE
+      });
+
+      await connection.execute(
+        'UPDATE project_metadata SET metadata = ? WHERE id = ?',
+        [JSON.stringify(data.metadata), id]
+      );
+
+      await connection.end();
+      return { id, ...data };
+    } catch (error) {
+      logger.error('Error updating project metadata:', error);
+      throw error;
+    }
+  }
+
+  static async delete(id) {
+    try {
+      const connection = await mysql.createConnection({
+        host: process.env.MYSQL_HOST,
+        user: process.env.MYSQL_USER,
+        password: process.env.MYSQL_PASSWORD,
+        database: process.env.MYSQL_DATABASE
+      });
+
+      const [result] = await connection.execute(
+        'DELETE FROM project_metadata WHERE id = ?',
+        [id]
+      );
+
+      await connection.end();
+      return result.affectedRows > 0;
+    } catch (error) {
+      logger.error('Error deleting project metadata:', error);
+      throw error;
     }
   }
 }

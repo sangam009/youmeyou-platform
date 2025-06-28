@@ -1,10 +1,10 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/config/index.js';
-import logger from '/app/src/utils/logger.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class APIDesignerAgent {
-  constructor(a2aClient) {
-    this.a2aClient = a2aClient;
+  constructor() {
+    this.client = new A2AClient(config.a2a.baseUrl);
     this.modelEndpoints = {
       gemini: config.api.geminiEndpoint,
       flanT5: config.api.flanT5Endpoint,
@@ -15,6 +15,7 @@ class APIDesignerAgent {
 
   async designAPI(requirements, context) {
     try {
+      logger.info('Designing API for requirements:', requirements);
       // 1. Initial Analysis with DistilBERT
       const initialAnalysis = await this.analyzeRequirements(requirements);
 
@@ -42,14 +43,14 @@ class APIDesignerAgent {
         performance: performanceAnalysis
       };
     } catch (error) {
-      logger.error('Error in API design:', error);
+      logger.error('Error designing API:', error);
       throw error;
     }
   }
 
   async analyzeRequirements(requirements) {
     // Use DistilBERT for quick classification and analysis
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.distilbert,
       message: {
         role: "system",
@@ -62,7 +63,7 @@ class APIDesignerAgent {
 
   async designEndpoints(requirements, initialAnalysis, context) {
     // Use Gemini for complex endpoint design
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -91,7 +92,7 @@ class APIDesignerAgent {
 
   async designAuthFlow(endpoints, context) {
     // Use Gemini for authentication flow design
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -118,7 +119,7 @@ class APIDesignerAgent {
 
   async generateDocumentation(endpoints, authFlow) {
     // Use FLAN-T5 for documentation generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.flanT5,
       message: {
         role: "system",
@@ -134,7 +135,7 @@ class APIDesignerAgent {
 
   async generateTestStrategy(endpoints) {
     // Use CodeBERT for test strategy generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -153,7 +154,7 @@ class APIDesignerAgent {
 
   async analyzePerformance(endpoints) {
     // Use CodeBERT for performance analysis
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -172,7 +173,7 @@ class APIDesignerAgent {
 
   async generateMockData(endpoints) {
     // Use FLAN-T5 for mock data generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.flanT5,
       message: {
         role: "system",
@@ -187,7 +188,7 @@ class APIDesignerAgent {
 
   async validateAPIDesign(endpoints, authFlow) {
     // Use CodeBERT for API design validation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -207,7 +208,7 @@ class APIDesignerAgent {
 
   async generateClientSDK(endpoints, language) {
     // Use Gemini for SDK generation
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",

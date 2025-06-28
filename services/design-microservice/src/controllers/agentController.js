@@ -1,5 +1,5 @@
-import a2aService from '/app/src/services/a2aService.js';
-import logger from '/app/src/utils/logger.js';
+import a2aService from '../services/a2aService.js';
+import logger from '../utils/logger.js';
 
 class AgentController {
   async routeTask(req, res) {
@@ -136,9 +136,9 @@ class AgentController {
 
   async suggestImprovements(req, res) {
     try {
-      const { code, context } = req.body;
-      const suggestions = await a2aService.suggestImprovements(code, context);
-      res.json(suggestions);
+      const { code } = req.body;
+      const result = await a2aService.suggestImprovements(code);
+      res.json(result);
     } catch (error) {
       logger.error('Error suggesting improvements:', error);
       res.status(500).json({ error: 'Failed to suggest improvements' });
@@ -376,9 +376,9 @@ class AgentController {
 
   async generateCode(req, res) {
     try {
-      const { prompt, context } = req.body;
-      const code = await a2aService.generateCode(prompt, context);
-      res.json(code);
+      const { prompt } = req.body;
+      const result = await a2aService.generateCode(prompt);
+      res.json(result);
     } catch (error) {
       logger.error('Error generating code:', error);
       res.status(500).json({ error: 'Failed to generate code' });
@@ -451,9 +451,9 @@ class AgentController {
 
   async analyzeCode(req, res) {
     try {
-      const { code, context } = req.body;
-      const analysis = await a2aService.analyzeCode(code, context);
-      res.json(analysis);
+      const { code } = req.body;
+      const result = await a2aService.analyzeCode(code);
+      res.json(result);
     } catch (error) {
       logger.error('Error analyzing code:', error);
       res.status(500).json({ error: 'Failed to analyze code' });
@@ -462,9 +462,9 @@ class AgentController {
 
   async reviewCode(req, res) {
     try {
-      const { code, context } = req.body;
-      const review = await a2aService.reviewCode(code, context);
-      res.json(review);
+      const { code } = req.body;
+      const result = await a2aService.reviewCode(code);
+      res.json(result);
     } catch (error) {
       logger.error('Error reviewing code:', error);
       res.status(500).json({ error: 'Failed to review code' });

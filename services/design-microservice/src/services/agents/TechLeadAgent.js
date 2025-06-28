@@ -1,8 +1,32 @@
-import logger from '/app/src/utils/logger.js';
+import { A2AClient } from '@a2a-js/sdk';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class TechLeadAgent {
-  constructor(a2aClient) {
-    this.a2aClient = a2aClient;
+  constructor() {
+    this.client = new A2AClient(config.a2a.baseUrl);
+  }
+
+  async reviewCode(code) {
+    try {
+      logger.info('Reviewing code:', code);
+      // TODO: Implement code review logic
+      return { status: 'Not implemented yet' };
+    } catch (error) {
+      logger.error('Error reviewing code:', error);
+      throw error;
+    }
+  }
+
+  async suggestImprovements(code) {
+    try {
+      logger.info('Suggesting improvements for code:', code);
+      // TODO: Implement improvement suggestion logic
+      return { status: 'Not implemented yet' };
+    } catch (error) {
+      logger.error('Error suggesting improvements:', error);
+      throw error;
+    }
   }
 
   async validateAndQuestion(executionPlan) {
@@ -11,7 +35,7 @@ class TechLeadAgent {
       const validationPrompt = this.generateValidationPrompt(executionPlan);
       
       // Get streaming response for validation
-      const stream = await this.a2aClient.sendMessageStream({
+      const stream = await this.client.sendMessageStream({
         message: {
           messageId: `validation-${Date.now()}`,
           role: "user",
@@ -148,7 +172,7 @@ class TechLeadAgent {
 
   async validateCriterion(response, criterion) {
     // Send validation request to A2A
-    const stream = await this.a2aClient.sendMessageStream({
+    const stream = await this.client.sendMessageStream({
       message: {
         messageId: `criterion-${Date.now()}`,
         role: "user",

@@ -140,7 +140,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ canvasId, projectId 
     projectId: process.env.NEXT_PUBLIC_A2A_PROJECT_ID || '',
     baseUrl: process.env.NEXT_PUBLIC_A2A_BASE_URL || 'http://localhost:4001'
   };
-  const a2aClient = new A2AClient(JSON.stringify(a2aConfig));
+  const a2aClient = new A2AClient(a2aConfig.baseUrl);
 
   // Handle stream errors with retry logic
   const handleStreamError = useCallback(async (error: Error | unknown) => {

@@ -1,10 +1,10 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/config/index.js';
-import logger from '/app/src/utils/logger.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class DatabaseDesignerAgent {
-  constructor(a2aClient) {
-    this.a2aClient = a2aClient;
+  constructor() {
+    this.client = new A2AClient(config.a2a.baseUrl);
     this.modelEndpoints = {
       gemini: config.api.geminiEndpoint,
       flanT5: config.api.flanT5Endpoint,
@@ -15,6 +15,7 @@ class DatabaseDesignerAgent {
 
   async designDatabase(requirements, context) {
     try {
+      logger.info('Designing database for requirements:', requirements);
       // 1. Initial Analysis with DistilBERT
       const initialAnalysis = await this.analyzeRequirements(requirements);
 
@@ -42,7 +43,7 @@ class DatabaseDesignerAgent {
         documentation
       };
     } catch (error) {
-      logger.error('Error in database design:', error);
+      logger.error('Error designing database:', error);
       throw error;
     }
   }

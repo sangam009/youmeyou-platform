@@ -1,5 +1,5 @@
-import canvasService from '/app/src/services/canvasService.js';
-import logger from '/app/src/utils/logger.js';
+import canvasService from '../services/canvasService.js';
+import logger from '../utils/logger.js';
 
 class CanvasController {
   async createCanvas(req, res) {
@@ -31,93 +31,49 @@ class CanvasController {
 
   async getCanvas(req, res) {
     try {
-      const { canvasId } = req.params;
-      const userId = req.user?.userId || 'dummy-user-id';
-      
-      logger.info(`Getting canvas ${canvasId} for user ${userId}`);
-      
-      const canvas = await canvasService.getCanvasById(canvasId, userId);
+      const { id } = req.params;
+      const canvas = await canvasService.getCanvas(id);
       
       if (!canvas) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Canvas not found'
-        });
+        return res.status(404).json({ error: 'Canvas not found' });
       }
       
-      res.json({
-        status: 'success',
-        data: canvas
-      });
+      res.json(canvas);
     } catch (error) {
       logger.error('Error getting canvas:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to get canvas'
-      });
+      res.status(500).json({ error: 'Failed to get canvas' });
     }
   }
 
   async updateCanvas(req, res) {
     try {
-      const { canvasId } = req.params;
-      const { canvasData, name } = req.body;
-      const userId = req.user?.userId || 'dummy-user-id';
-      
-      logger.info(`Updating canvas ${canvasId} by user ${userId}`);
-      
-      const canvas = await canvasService.updateCanvas(canvasId, {
-        canvasData,
-        name,
-        userId
-      });
+      const { id } = req.params;
+      const canvas = await canvasService.updateCanvas(id, req.body);
       
       if (!canvas) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Canvas not found'
-        });
+        return res.status(404).json({ error: 'Canvas not found' });
       }
       
-      res.json({
-        status: 'success',
-        data: canvas
-      });
+      res.json(canvas);
     } catch (error) {
       logger.error('Error updating canvas:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to update canvas'
-      });
+      res.status(500).json({ error: 'Failed to update canvas' });
     }
   }
 
   async deleteCanvas(req, res) {
     try {
-      const { canvasId } = req.params;
-      const userId = req.user?.userId || 'dummy-user-id';
-      
-      logger.info(`Deleting canvas ${canvasId} by user ${userId}`);
-      
-      const result = await canvasService.deleteCanvas(canvasId, userId);
+      const { id } = req.params;
+      const result = await canvasService.deleteCanvas(id);
       
       if (!result) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Canvas not found'
-        });
+        return res.status(404).json({ error: 'Canvas not found' });
       }
       
-      res.json({
-        status: 'success',
-        message: 'Canvas deleted successfully'
-      });
+      res.json({ status: 'deleted', id });
     } catch (error) {
       logger.error('Error deleting canvas:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to delete canvas'
-      });
+      res.status(500).json({ error: 'Failed to delete canvas' });
     }
   }
 

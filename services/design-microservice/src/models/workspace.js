@@ -1,35 +1,61 @@
 import { MongoClient, ObjectId } from 'mongodb';
-import logger from '/app/src/utils/logger.js';
+import logger from '../utils/logger.js';
 
 class Workspace {
   static async findByUserId(userId) {
-    const db = await this.connect();
-    const collection = db.collection('workspaces');
-    return await collection.find({ userId }).toArray();
+    try {
+      const client = await MongoClient.connect(process.env.MONGODB_URI);
+      const db = client.db();
+      const workspaces = await db.collection('workspaces').find({ userId }).toArray();
+      client.close();
+      return workspaces;
+    } catch (error) {
+      logger.error('Error finding workspaces:', error);
+      throw error;
+    }
   }
 
   static async create(data) {
-    const db = await this.connect();
-    const collection = db.collection('workspaces');
-    const result = await collection.insertOne(data);
-    return { id: result.insertedId, ...data };
+    try {
+      const client = await MongoClient.connect(process.env.MONGODB_URI);
+      const db = client.db();
+      const result = await db.collection('workspaces').insertOne(data);
+      client.close();
+      return { ...data, _id: result.insertedId };
+    } catch (error) {
+      logger.error('Error creating workspace:', error);
+      throw error;
+    }
   }
 
   static async update(id, data) {
-    const db = await this.connect();
-    const collection = db.collection('workspaces');
-    await collection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: data }
-    );
-    return await this.findById(id);
+    try {
+      const client = await MongoClient.connect(process.env.MONGODB_URI);
+      const db = client.db();
+      const result = await db.collection('workspaces').findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: data },
+        { returnDocument: 'after' }
+      );
+      client.close();
+      return result.value;
+    } catch (error) {
+      logger.error('Error updating workspace:', error);
+      throw error;
+    }
   }
 
   static async delete(id) {
-    const db = await this.connect();
-    const collection = db.collection('workspaces');
-    const result = await collection.deleteOne({ _id: new ObjectId(id) });
-    return result.deletedCount > 0;
+    try {
+      const client = await MongoClient.connect(process.env.MONGODB_URI);
+      const db = client.db();
+      const result = await db.collection('workspaces').deleteOne({ _id: new ObjectId(id) });
+      client.close();
+      return result.deletedCount > 0;
+    } catch (error) {
+      logger.error('Error deleting workspace:', error);
+      throw error;
+    }
   }
 
   static async findById(id) {

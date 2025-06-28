@@ -1,5 +1,5 @@
-import logger from '/app/src/utils/logger.js';
-import AgentOrchestrator from '/app/src/services/agents/AgentOrchestrator.js';
+import logger from '../../utils/logger.js';
+import AgentOrchestrator from './AgentOrchestrator.js';
 
 class A2AAdapter {
   constructor() {

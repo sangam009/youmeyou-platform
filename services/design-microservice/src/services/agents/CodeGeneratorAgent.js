@@ -1,10 +1,10 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/config/index.js';
-import logger from '/app/src/utils/logger.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class CodeGeneratorAgent {
-  constructor(a2aClient) {
-    this.a2aClient = a2aClient;
+  constructor() {
+    this.client = new A2AClient(config.a2a.baseUrl);
     this.modelEndpoints = {
       gemini: config.api.geminiEndpoint,
       flanT5: config.api.flanT5Endpoint,
@@ -49,7 +49,7 @@ class CodeGeneratorAgent {
 
   async analyzeRequirements(requirements) {
     // Use DistilBERT for initial requirement analysis
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.distilbert,
       message: {
         role: "system",
@@ -68,7 +68,7 @@ class CodeGeneratorAgent {
 
   async selectImplementationPatterns(requirements, analysis) {
     // Use CodeBERT for pattern selection
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -88,7 +88,7 @@ class CodeGeneratorAgent {
 
   async generateImplementation(requirements, patterns, context) {
     // Use Gemini for code generation
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -116,7 +116,7 @@ class CodeGeneratorAgent {
 
   async generateTests(code) {
     // Use CodeBERT for test generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -135,7 +135,7 @@ class CodeGeneratorAgent {
 
   async generateDocumentation(code, tests) {
     // Use FLAN-T5 for documentation generation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.flanT5,
       message: {
         role: "system",
@@ -156,7 +156,7 @@ class CodeGeneratorAgent {
 
   async performCodeReview(code) {
     // Use CodeBERT for code review
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",
@@ -175,7 +175,7 @@ class CodeGeneratorAgent {
 
   async optimizeCode(code, performance) {
     // Use Gemini for code optimization
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -202,7 +202,7 @@ class CodeGeneratorAgent {
 
   async generateRefactoringPlan(code, analysis) {
     // Use Gemini for refactoring planning
-    const response = await this.a2aClient.sendMessageStream({
+    const response = await this.client.sendMessageStream({
       endpoint: this.modelEndpoints.gemini,
       message: {
         role: "system",
@@ -229,7 +229,7 @@ class CodeGeneratorAgent {
 
   async validateCodeQuality(code) {
     // Use CodeBERT for code quality validation
-    const response = await this.a2aClient.sendMessage({
+    const response = await this.client.sendMessage({
       endpoint: this.modelEndpoints.codebert,
       message: {
         role: "system",

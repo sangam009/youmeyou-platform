@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import auth from '/app/src/middleware/auth.js';
-import DynamicPromptingService from '/app/src/services/DynamicPromptingService.js';
+import auth from '../middleware/auth.js';
+import DynamicPromptingService from '../services/DynamicPromptingService.js';
 
 const router = express.Router();
 const dynamicPromptingService = new DynamicPromptingService();
@@ -11,75 +11,30 @@ const dynamicPromptingService = new DynamicPromptingService();
  * Demonstrates intelligent, context-aware prompt generation
  */
 
-/**
- * POST /api/dynamic-prompting/analyze
- * Generate context-aware analysis with dynamic prompting
- */
-router.post('/analyze', [
-  auth,
-  body('request').notEmpty().withMessage('Request is required'),
-  body('canvasState').optional().isObject(),
-  body('userProfile').optional().isObject(),
-  body('projectContext').optional().isObject()
-], async (req, res) => {
-  try {
+// Validation middleware
+const validatePrompt = [
+  body('prompt').isString().notEmpty().trim(),
+  body('context').optional().isString(),
+  (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
+    next();
+  }
+];
 
-    const { request, canvasState, userProfile, projectContext } = req.body;
-    
-    // Get A2A service instance
-    const a2aService = req.app.get('a2aService');
-    
-    // Create task with enhanced context
-    const task = {
-      type: 'analysis',
-      content: request,
-      canvasState: canvasState || { nodes: [], edges: [] },
-      userId: req.user?.id || 'demo-user',
-      projectId: req.body.projectId || 'demo-project',
-      originalRequest: request
-    };
-
-    // Select appropriate agent for analysis
-    const agent = a2aService.agents['arch-001']; // Architecture Designer
-    
-    // Generate dynamic prompt
-    const dynamicPrompt = await a2aService.buildEnhancedPrompt(agent, task);
-    
-    // Execute with dynamic prompting
-    const result = await a2aService.executeWithAgent(agent, task);
-    
-    // Get prompting statistics
-    const stats = a2aService.getDynamicPromptingStats();
-    
-    res.json({
-      success: true,
-      data: {
-        analysis: result,
-        promptingInfo: {
-          promptUsed: dynamicPrompt.substring(0, 500) + '...',
-          promptingStats: stats,
-          agentUsed: agent.name,
-          optimizations: [
-            'Context-aware prompt generation',
-            'User profile adaptation',
-            'Project context integration',
-            'Token optimization applied'
-          ]
-        }
-      }
-    });
-
+/**
+ * POST /api/dynamic-prompting/analyze
+ * Generate context-aware analysis with dynamic prompting
+ */
+router.post('/analyze', auth, validatePrompt, async (req, res) => {
+  try {
+    const { prompt, context } = req.body;
+    const result = await dynamicPromptingService.analyzePrompt(prompt, context);
+    res.json(result);
   } catch (error) {
-    console.error('Error in dynamic prompting analysis:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to perform dynamic analysis',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Failed to analyze prompt' });
   }
 });
 
