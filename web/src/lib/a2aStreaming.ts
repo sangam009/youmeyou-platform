@@ -13,11 +13,20 @@ export class A2AStreamingService {
   private a2aClient: A2AClient;
 
   constructor() {
+    // Initialize with proper base URL
     this.a2aClient = new A2AClient(config.api.designService);
   }
 
   async startStreamingExecution(task: any, options: StreamingOptions = {}) {
     try {
+      // First check if the agent card is available
+      try {
+        await this.a2aClient.getAgentCard();
+      } catch (error) {
+        console.error('Failed to fetch agent card:', error);
+        throw new Error('Design service is not available. Please ensure the service is running.');
+      }
+
       const stream = await this.a2aClient.sendMessageStream({
         message: {
           messageId: task.id || Date.now().toString(),
