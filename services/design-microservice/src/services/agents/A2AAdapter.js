@@ -1,5 +1,5 @@
 import logger from '../../utils/logger.js';
-import AgentOrchestrator from './AgentOrchestrator.js';
+import { AgentOrchestrator } from './AgentOrchestrator.js';
 
 class A2AAdapter {
   constructor() {
@@ -14,14 +14,11 @@ class A2AAdapter {
       // Convert A2A task format to new agent system format
       const request = this.convertTaskToRequest(task);
       
-      // Process request through new agent system
-      const executionResult = await this.orchestrator.processRequest(request, {
-        taskType: task.type,
-        canvasState: task.canvasState
-      });
+      // Process request through new agent system format
+      const executionResult = await this.orchestrator.analyzeTask(request.content);
       
       // Store execution mapping
-      this.activeExecutions.set(task.id, executionResult.executionId);
+      this.activeExecutions.set(task.id, executionResult);
       
       // Convert response back to A2A format
       return this.convertToA2AResponse(executionResult, task);
@@ -33,19 +30,16 @@ class A2AAdapter {
 
   async executeNextStep(taskId, previousResponse = null) {
     try {
-      const executionId = this.activeExecutions.get(taskId);
-      if (!executionId) {
+      const executionResult = this.activeExecutions.get(taskId);
+      if (!executionResult) {
         throw new Error('No active execution found for task');
       }
       
-      // Get current execution status
-      const status = await this.orchestrator.getExecutionStatus(executionId);
-      
-      // Execute next step
-      const stepResult = await this.orchestrator.executeStep(
-        executionId,
-        status.currentStep,
-        previousResponse
+      // Execute coordinated task with the selected agents
+      const stepResult = await this.orchestrator.executeCoordinatedTask(
+        executionResult.selectedAgents,
+        previousResponse || 'Continue with the next step',
+        executionResult.context
       );
       
       return this.convertToA2AStepResponse(stepResult);
@@ -74,16 +68,17 @@ class A2AAdapter {
       agentId: 'multi-agent-system',
       agentName: 'Enhanced Agent System',
       response: {
-        analysis: executionResult.analysis,
-        questions: executionResult.questions,
-        plan: executionResult.executionPlan,
+        analysis: executionResult.context,
+        questions: [],
+        plan: executionResult.selectedAgents,
         status: 'INITIALIZED'
       },
-      skills: executionResult.analysis.requiredSkills,
+      skills: executionResult.selectedAgents,
       executedAt: new Date(),
       metadata: {
-        executionId: executionResult.executionId,
-        originalTask: task.type
+        executionResult: executionResult,
+        originalTask: task.type,
+        complexity: executionResult.complexity
       }
     };
   }
@@ -91,13 +86,13 @@ class A2AAdapter {
   convertToA2AStepResponse(stepResult) {
     // Convert step result to A2A format
     return {
-      status: stepResult.status,
+      status: stepResult.success ? 'completed' : 'failed',
       response: {
-        validation: stepResult.validation,
-        followUp: stepResult.followUp,
-        progressReport: stepResult.progressReport
+        validation: stepResult.success,
+        followUp: stepResult.summary,
+        progressReport: stepResult.metadata
       },
-      nextStep: stepResult.nextStep,
+      nextStep: stepResult.success ? 'completed' : 'retry',
       completedAt: new Date()
     };
   }

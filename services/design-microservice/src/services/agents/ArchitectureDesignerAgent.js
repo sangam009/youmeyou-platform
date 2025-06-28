@@ -1,177 +1,468 @@
-import { A2AClient } from '@a2a-js/sdk';
 import { config } from '../../config/index.js';
 import logger from '../../utils/logger.js';
 
-class ArchitectureDesignerAgent {
+/**
+ * Architecture Designer Agent
+ * Specializes in system architecture design and scalability analysis
+ */
+export class ArchitectureDesignerAgent {
   constructor() {
-    this.client = new A2AClient(config.a2a.baseUrl);
-    this.modelEndpoints = {
-      gemini: config.api.geminiEndpoint,
-      flanT5: config.api.flanT5Endpoint,
-      codebert: config.api.codebertEndpoint,
-      distilbert: config.api.distilbertEndpoint
+    this.name = 'Architecture Designer';
+    this.capabilities = [
+      'system-architecture',
+      'scalability-analysis',
+      'component-design',
+      'performance-optimization'
+    ];
+    
+    logger.info('🏗️ ArchitectureDesignerAgent initialized');
+  }
+
+  /**
+   * Execute architecture design task
+   */
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info(`🏗️ ${this.name} executing task: ${userQuery.substring(0, 100)}...`);
+
+      // Analyze the requirements
+      const requirements = this.parseRequirements(userQuery);
+      
+      // Design the architecture
+      const architecture = await this.designArchitecture(requirements, context);
+      
+      // Generate additional artifacts
+      const scalabilityAnalysis = this.analyzeScalability(architecture);
+      const recommendations = this.generateRecommendations(architecture, requirements);
+
+      const result = {
+        content: this.formatResponse(architecture, scalabilityAnalysis, recommendations),
+        artifacts: [
+          {
+            id: 'architecture-design',
+            name: 'architecture_design.json',
+            content: architecture,
+            type: 'architecture'
+          },
+          {
+            id: 'scalability-analysis',
+            name: 'scalability_analysis.json',
+            content: scalabilityAnalysis,
+            type: 'analysis'
+          }
+        ],
+        canvas: this.generateCanvasData(architecture),
+        metadata: {
+          agent: this.name,
+          capabilities: this.capabilities,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      logger.info(`✅ ${this.name} completed successfully`);
+      return result;
+
+    } catch (error) {
+      logger.error(`❌ ${this.name} failed:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse requirements from user query
+   */
+  parseRequirements(userQuery) {
+    const requirements = {
+      type: 'web-application',
+      scale: 'medium',
+      features: [],
+      constraints: [],
+      technologies: []
+    };
+
+    const query = userQuery.toLowerCase();
+
+    // Determine application type
+    if (query.includes('microservice')) requirements.type = 'microservices';
+    if (query.includes('mobile')) requirements.type = 'mobile-app';
+    if (query.includes('api')) requirements.type = 'api-service';
+    if (query.includes('e-commerce')) requirements.type = 'e-commerce';
+
+    // Determine scale
+    if (query.includes('large') || query.includes('enterprise')) requirements.scale = 'large';
+    if (query.includes('small') || query.includes('simple')) requirements.scale = 'small';
+
+    // Extract features
+    const featureKeywords = ['authentication', 'payment', 'chat', 'notification', 'search', 'analytics'];
+    featureKeywords.forEach(feature => {
+      if (query.includes(feature)) {
+        requirements.features.push(feature);
+      }
+    });
+
+    // Extract technologies
+    const techKeywords = ['react', 'node', 'python', 'java', 'mongodb', 'postgresql', 'redis'];
+    techKeywords.forEach(tech => {
+      if (query.includes(tech)) {
+        requirements.technologies.push(tech);
+      }
+    });
+
+    return requirements;
+  }
+
+  /**
+   * Design system architecture
+   */
+  async designArchitecture(requirements, context) {
+    const architecture = {
+      overview: this.generateOverview(requirements),
+      components: this.designComponents(requirements),
+      dataFlow: this.designDataFlow(requirements),
+      deployment: this.designDeployment(requirements),
+      security: this.designSecurity(requirements),
+      scalability: this.designScalability(requirements)
+    };
+
+    return architecture;
+  }
+
+  /**
+   * Generate architecture overview
+   */
+  generateOverview(requirements) {
+    return {
+      type: requirements.type,
+      scale: requirements.scale,
+      pattern: this.selectArchitecturePattern(requirements),
+      description: `${requirements.type} architecture designed for ${requirements.scale} scale applications`,
+      mainComponents: this.getMainComponents(requirements.type)
     };
   }
 
-  async analyzeArchitecture(requirements, context) {
-    try {
-      // 1. Initial Analysis with DistilBERT
-      const initialAnalysis = await this.performInitialAnalysis(requirements);
-
-      // 2. Pattern Detection with CodeBERT
-      const patterns = await this.detectArchitecturePatterns(requirements, initialAnalysis);
-
-      // 3. Complex Design with Gemini
-      const architectureDesign = await this.generateArchitectureDesign(requirements, patterns, context);
-
-      // 4. Documentation with FLAN-T5
-      const documentation = await this.generateDocumentation(architectureDesign);
-
-      return {
-        analysis: initialAnalysis,
-        patterns,
-        design: architectureDesign,
-        documentation
-      };
-    } catch (error) {
-      logger.error('Error in architecture analysis:', error);
-      throw error;
-    }
+  /**
+   * Select appropriate architecture pattern
+   */
+  selectArchitecturePattern(requirements) {
+    if (requirements.type === 'microservices') return 'microservices';
+    if (requirements.scale === 'large') return 'layered-microservices';
+    if (requirements.type === 'api-service') return 'api-gateway';
+    return 'layered-monolith';
   }
 
-  async performInitialAnalysis(requirements) {
-    // Use DistilBERT for quick classification and analysis
-    const response = await this.client.sendMessage({
-      endpoint: this.modelEndpoints.distilbert,
-      message: {
-        role: "system",
-        content: "Analyze the following requirements and classify the architecture components needed:",
-        requirements
-      }
-    });
-    return response.analysis;
+  /**
+   * Get main components for architecture type
+   */
+  getMainComponents(type) {
+    const componentMap = {
+      'web-application': ['frontend', 'backend', 'database', 'cache'],
+      'microservices': ['api-gateway', 'services', 'database', 'message-queue'],
+      'mobile-app': ['mobile-client', 'api-server', 'database', 'push-service'],
+      'api-service': ['api-gateway', 'business-logic', 'database', 'cache'],
+      'e-commerce': ['frontend', 'product-service', 'order-service', 'payment-service', 'database']
+    };
+
+    return componentMap[type] || componentMap['web-application'];
   }
 
-  async detectArchitecturePatterns(requirements, initialAnalysis) {
-    // Use CodeBERT for pattern detection
-    const response = await this.client.sendMessage({
-      endpoint: this.modelEndpoints.codebert,
-      message: {
-        role: "system",
-        content: "Identify architecture patterns and best practices for:",
-        requirements,
-        initialAnalysis
-      }
-    });
-    return response.patterns;
-  }
+  /**
+   * Design system components
+   */
+  designComponents(requirements) {
+    const components = [];
+    const mainComponents = this.getMainComponents(requirements.type);
 
-  async generateArchitectureDesign(requirements, patterns, context) {
-    // Use Gemini for complex architecture design
-    const response = await this.client.sendMessageStream({
-      endpoint: this.modelEndpoints.gemini,
-      message: {
-        role: "system",
-        content: [
-          "Design a comprehensive architecture with the following context:",
-          `Requirements: ${requirements}`,
-          `Patterns: ${JSON.stringify(patterns)}`,
-          `Project Context: ${JSON.stringify(context)}`
-        ].join('\n')
-      }
+    mainComponents.forEach(componentType => {
+      components.push({
+        id: componentType,
+        name: this.formatComponentName(componentType),
+        type: componentType,
+        description: this.getComponentDescription(componentType),
+        technologies: this.suggestTechnologies(componentType, requirements),
+        responsibilities: this.getComponentResponsibilities(componentType),
+        interfaces: this.getComponentInterfaces(componentType)
+      });
     });
 
-    let design = '';
-    for await (const chunk of response) {
-      if (chunk.type === 'text') {
-        design += chunk.content;
-      }
-    }
-    return design;
+    return components;
   }
 
-  async generateDocumentation(architectureDesign) {
-    // Use FLAN-T5 for documentation generation
-    const response = await this.client.sendMessage({
-      endpoint: this.modelEndpoints.flanT5,
-      message: {
-        role: "system",
-        content: "Generate clear documentation for the following architecture:",
-        architecture: architectureDesign
-      }
-    });
-    return response.documentation;
+  /**
+   * Format component name
+   */
+  formatComponentName(componentType) {
+    return componentType.split('-').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
   }
 
-  // Helper method to generate Mermaid diagrams
-  async generateArchitectureDiagram(design) {
-    // Use Gemini for complex diagram generation
-    const response = await this.client.sendMessage({
-      endpoint: this.modelEndpoints.gemini,
-      message: {
-        role: "system",
-        content: "Generate a Mermaid diagram for the following architecture design:",
-        design
-      }
-    });
-    return response.diagram;
+  /**
+   * Get component description
+   */
+  getComponentDescription(componentType) {
+    const descriptions = {
+      'frontend': 'User interface and client-side logic',
+      'backend': 'Server-side business logic and API endpoints',
+      'database': 'Data storage and persistence layer',
+      'cache': 'High-speed data caching for performance',
+      'api-gateway': 'Central entry point for all API requests',
+      'services': 'Microservices handling specific business domains',
+      'message-queue': 'Asynchronous message processing',
+      'mobile-client': 'Native or hybrid mobile application',
+      'api-server': 'RESTful API server for mobile clients',
+      'push-service': 'Push notification delivery service',
+      'business-logic': 'Core business rules and processing',
+      'product-service': 'Product catalog and inventory management',
+      'order-service': 'Order processing and fulfillment',
+      'payment-service': 'Payment processing and transactions'
+    };
+
+    return descriptions[componentType] || 'Application component';
   }
 
-  // Method to analyze scalability
-  async analyzeScalability(design) {
-    // Use Gemini for complex scalability analysis
-    const response = await this.client.sendMessageStream({
-      endpoint: this.modelEndpoints.gemini,
-      message: {
-        role: "system",
-        content: "Analyze scalability considerations for the architecture:",
-        design
+  /**
+   * Suggest technologies for component
+   */
+  suggestTechnologies(componentType, requirements) {
+    const techSuggestions = {
+      'frontend': ['React', 'Next.js', 'TypeScript'],
+      'backend': ['Node.js', 'Express', 'TypeScript'],
+      'database': ['PostgreSQL', 'MongoDB'],
+      'cache': ['Redis', 'Memcached'],
+      'api-gateway': ['Kong', 'AWS API Gateway', 'Nginx'],
+      'message-queue': ['RabbitMQ', 'Apache Kafka', 'AWS SQS'],
+      'mobile-client': ['React Native', 'Flutter'],
+      'api-server': ['Node.js', 'Express', 'Fastify']
+    };
+
+    // Override with user-specified technologies
+    const suggested = techSuggestions[componentType] || ['To be determined'];
+    
+    // Add user-specified technologies if relevant
+    requirements.technologies.forEach(tech => {
+      if (!suggested.includes(tech)) {
+        suggested.push(tech);
       }
     });
 
-    let analysis = '';
-    for await (const chunk of response) {
-      if (chunk.type === 'text') {
-        analysis += chunk.content;
-      }
-    }
-    return analysis;
+    return suggested;
   }
 
-  // Method to suggest optimizations
-  async suggestOptimizations(design, scalabilityAnalysis) {
-    // Use Gemini for complex optimization suggestions
-    const response = await this.client.sendMessageStream({
-      endpoint: this.modelEndpoints.gemini,
-      message: {
-        role: "system",
-        content: [
-          "Suggest optimizations based on:",
-          `Design: ${design}`,
-          `Scalability Analysis: ${scalabilityAnalysis}`
-        ].join('\n')
+  /**
+   * Get component responsibilities
+   */
+  getComponentResponsibilities(componentType) {
+    const responsibilities = {
+      'frontend': ['User interface rendering', 'User interaction handling', 'State management'],
+      'backend': ['Business logic processing', 'API endpoint handling', 'Data validation'],
+      'database': ['Data persistence', 'Query processing', 'Data integrity'],
+      'cache': ['Fast data retrieval', 'Session storage', 'Performance optimization'],
+      'api-gateway': ['Request routing', 'Authentication', 'Rate limiting'],
+      'message-queue': ['Asynchronous processing', 'Event handling', 'Load balancing']
+    };
+
+    return responsibilities[componentType] || ['Component-specific functionality'];
+  }
+
+  /**
+   * Get component interfaces
+   */
+  getComponentInterfaces(componentType) {
+    const interfaces = {
+      'frontend': ['HTTP API calls', 'WebSocket connections'],
+      'backend': ['REST API', 'Database connections'],
+      'database': ['SQL/NoSQL queries', 'Connection pooling'],
+      'cache': ['Key-value operations', 'TTL management'],
+      'api-gateway': ['HTTP/HTTPS', 'WebSocket proxy'],
+      'message-queue': ['Pub/Sub messaging', 'Queue management']
+    };
+
+    return interfaces[componentType] || ['Standard interfaces'];
+  }
+
+  /**
+   * Design data flow
+   */
+  designDataFlow(requirements) {
+    return {
+      userRequests: 'Frontend → API Gateway → Backend Services → Database',
+      dataRetrieval: 'Database → Backend Services → Cache → Frontend',
+      authentication: 'Frontend → Auth Service → Token Validation',
+      notifications: 'Event Trigger → Message Queue → Notification Service'
+    };
+  }
+
+  /**
+   * Design deployment architecture
+   */
+  designDeployment(requirements) {
+    const deployment = {
+      strategy: requirements.scale === 'large' ? 'containerized-microservices' : 'containerized-monolith',
+      platform: 'Docker + Kubernetes',
+      environments: ['development', 'staging', 'production'],
+      scaling: requirements.scale === 'large' ? 'horizontal' : 'vertical',
+      monitoring: ['Application metrics', 'Infrastructure monitoring', 'Log aggregation']
+    };
+
+    return deployment;
+  }
+
+  /**
+   * Design security architecture
+   */
+  designSecurity(requirements) {
+    return {
+      authentication: 'JWT-based authentication',
+      authorization: 'Role-based access control (RBAC)',
+      dataProtection: 'Encryption at rest and in transit',
+      apiSecurity: 'Rate limiting, input validation, CORS',
+      infrastructure: 'Network security, firewall rules, VPN access'
+    };
+  }
+
+  /**
+   * Design scalability features
+   */
+  designScalability(requirements) {
+    return {
+      horizontal: ['Load balancing', 'Auto-scaling groups', 'Database sharding'],
+      vertical: ['Resource optimization', 'Performance tuning'],
+      caching: ['Application-level caching', 'CDN for static assets'],
+      database: ['Read replicas', 'Connection pooling', 'Query optimization']
+    };
+  }
+
+  /**
+   * Analyze scalability
+   */
+  analyzeScalability(architecture) {
+    return {
+      currentCapacity: 'Designed for medium-scale applications',
+      bottlenecks: ['Database queries', 'API response times'],
+      recommendations: [
+        'Implement caching layer for frequently accessed data',
+        'Consider database indexing for common queries',
+        'Add load balancing for high availability'
+      ],
+      metrics: {
+        expectedUsers: '10,000 concurrent users',
+        responseTime: '< 200ms average',
+        availability: '99.9% uptime'
+      }
+    };
+  }
+
+  /**
+   * Generate recommendations
+   */
+  generateRecommendations(architecture, requirements) {
+    return {
+      performance: [
+        'Implement caching strategy for frequently accessed data',
+        'Use CDN for static asset delivery',
+        'Optimize database queries with proper indexing'
+      ],
+      security: [
+        'Implement comprehensive input validation',
+        'Use HTTPS for all communications',
+        'Regular security audits and updates'
+      ],
+      maintainability: [
+        'Follow consistent coding standards',
+        'Implement comprehensive testing strategy',
+        'Use infrastructure as code for deployments'
+      ],
+      scalability: [
+        'Design for horizontal scaling from the start',
+        'Implement proper monitoring and alerting',
+        'Plan for database scaling strategies'
+      ]
+    };
+  }
+
+  /**
+   * Generate canvas data for visualization
+   */
+  generateCanvasData(architecture) {
+    const nodes = [];
+    const edges = [];
+    let nodeId = 1;
+
+    // Create nodes for each component
+    architecture.components.forEach((component, index) => {
+      nodes.push({
+        id: component.id,
+        type: 'custom',
+        position: { x: (index % 3) * 300, y: Math.floor(index / 3) * 200 },
+        data: {
+          label: component.name,
+          type: component.type,
+          description: component.description,
+          technologies: component.technologies
+        }
+      });
+    });
+
+    // Create edges based on typical component relationships
+    const relationships = [
+      { from: 'frontend', to: 'backend' },
+      { from: 'backend', to: 'database' },
+      { from: 'backend', to: 'cache' },
+      { from: 'api-gateway', to: 'services' },
+      { from: 'services', to: 'database' }
+    ];
+
+    relationships.forEach(rel => {
+      const sourceNode = nodes.find(n => n.id === rel.from);
+      const targetNode = nodes.find(n => n.id === rel.to);
+      
+      if (sourceNode && targetNode) {
+        edges.push({
+          id: `${rel.from}-${rel.to}`,
+          source: rel.from,
+          target: rel.to,
+          type: 'smoothstep',
+          animated: true
+        });
       }
     });
 
-    let suggestions = '';
-    for await (const chunk of response) {
-      if (chunk.type === 'text') {
-        suggestions += chunk.content;
-      }
-    }
-    return suggestions;
+    return { nodes, edges };
   }
 
-  async designArchitecture(requirements) {
-    try {
-      logger.info('Designing architecture for requirements:', requirements);
-      // TODO: Implement architecture design logic
-      return { status: 'Not implemented yet' };
-    } catch (error) {
-      logger.error('Error designing architecture:', error);
-      throw error;
-    }
+  /**
+   * Format the response
+   */
+  formatResponse(architecture, scalabilityAnalysis, recommendations) {
+    return `# Architecture Design
+
+## Overview
+${architecture.overview.description}
+
+**Pattern:** ${architecture.overview.pattern}
+**Scale:** ${architecture.overview.scale}
+
+## Components
+${architecture.components.map(comp => 
+  `### ${comp.name}
+- **Type:** ${comp.type}
+- **Description:** ${comp.description}
+- **Technologies:** ${comp.technologies.join(', ')}
+- **Responsibilities:** ${comp.responsibilities.join(', ')}`
+).join('\n\n')}
+
+## Scalability Analysis
+${scalabilityAnalysis.currentCapacity}
+
+**Expected Metrics:**
+- Users: ${scalabilityAnalysis.metrics.expectedUsers}
+- Response Time: ${scalabilityAnalysis.metrics.responseTime}
+- Availability: ${scalabilityAnalysis.metrics.availability}
+
+## Recommendations
+${Object.entries(recommendations).map(([category, items]) => 
+  `### ${category.charAt(0).toUpperCase() + category.slice(1)}
+${items.map(item => `- ${item}`).join('\n')}`
+).join('\n\n')}`;
   }
 }
-
-export default ArchitectureDesignerAgent;

@@ -4,7 +4,7 @@ import logger from '../utils/logger.js';
 import A2AAdapter from './agents/A2AAdapter.js';
 import ProjectManagerAgent from './agents/ProjectManagerAgent.js';
 import TechLeadAgent from './agents/TechLeadAgent.js';
-import AgentOrchestrator from './agents/AgentOrchestrator.js';
+import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
 import DynamicPromptingService from './DynamicPromptingService.js';
 
 class A2AService {

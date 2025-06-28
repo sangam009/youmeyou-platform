@@ -1,114 +1,188 @@
 import express from 'express';
 import cors from 'cors';
-import mongoose from 'mongoose';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import fs from 'fs';
-import morgan from 'morgan';
+import { config } from './config/index.js';
 import logger from './utils/logger.js';
-import cookieParser from 'cookie-parser';
-import requireAuth from './middleware/auth.js';
-import workspacesRoutes from './routes/workspaces.js';
+
+// Import A2A SDK components for server implementation
+import { A2AExpressApp, DefaultRequestHandler, InMemoryTaskStore } from '@a2a-js/sdk';
+
+// Import our agent executors
+import { DesignAgentExecutor } from './services/agents/DesignAgentExecutor.js';
+
+// Import routes (for non-A2A endpoints)
+import workspaceRoutes from './routes/workspaces.js';
 import projectRoutes from './routes/projects.js';
-import templatesRoutes from './routes/templates.js';
 import canvasRoutes from './routes/canvas.js';
 import agentRoutes from './routes/agents.js';
+import templateRoutes from './routes/templates.js';
 import dynamicPromptingRoutes from './routes/dynamicPrompting.js';
-import projectsController from './controllers/projectsController.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load environment variables from .txt files
-function loadEnvFromFile() {
-  const env = process.env.NODE_ENV || 'development';
-  const envFilePath = join(__dirname, '..', `env.${env}.txt`);
-  
-  if (fs.existsSync(envFilePath)) {
-    const envContent = fs.readFileSync(envFilePath, 'utf8');
-    const envLines = envContent.split('\n');
-    
-    envLines.forEach(line => {
-      line = line.trim();
-      if (line && !line.startsWith('#')) {
-        const [key, ...valueParts] = line.split('=');
-        if (key && valueParts.length > 0) {
-          const value = valueParts.join('=').trim();
-          // Only set if not already defined
-          if (!process.env[key]) {
-            process.env[key] = value;
-          }
-        }
-      }
-    });
-    
-    console.log(`✅ Loaded environment from: ${envFilePath}`);
-  } else {
-    console.log(`⚠️  Environment file not found: ${envFilePath}`);
-  }
-}
-
-// Load environment first
-loadEnvFromFile();
+// Import middleware
+import authMiddleware from './middleware/auth.js';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  origin: config.cors.origins,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(morgan('dev', { stream: { write: msg => logger.info(msg.trim()) } }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
-    status: 'ok',
+    status: 'healthy', 
+    service: 'design-microservice',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    googleAI: process.env.GOOGLE_AI_KEY ? 'configured' : 'not configured'
+    environment: config.environment 
   });
 });
 
-// Protect all routes below with requireAuth
-app.use(requireAuth);
+// A2A Agent Card - Define our design agents
+const DESIGN_AGENT_CARD = {
+  name: 'YouMeYou Design Agents',
+  description: 'AI-powered system design and architecture agents for building complete applications',
+  url: `http://localhost:${config.port}`,
+  version: '1.0.0',
+  capabilities: {
+    streaming: true,
+    pushNotifications: false,
+    stateTransitionHistory: true
+  },
+  defaultInputModes: ['text/plain'],
+  defaultOutputModes: ['text/plain', 'application/json'],
+  skills: [
+    {
+      id: 'architecture_design',
+      name: 'Architecture Design',
+      description: 'Design system architecture, component relationships, and scalability patterns',
+      tags: ['architecture', 'system-design', 'scalability'],
+      examples: [
+        'Design a microservices architecture for e-commerce platform',
+        'Create a scalable chat application architecture',
+        'Design database schema for social media app'
+      ],
+      inputModes: ['text/plain'],
+      outputModes: ['text/plain', 'application/json']
+    },
+    {
+      id: 'database_design',
+      name: 'Database Design',
+      description: 'Design database schemas, optimize queries, and plan data models',
+      tags: ['database', 'schema', 'optimization'],
+      examples: [
+        'Design database schema for inventory management',
+        'Optimize queries for large datasets',
+        'Create migration strategy for database changes'
+      ],
+      inputModes: ['text/plain'],
+      outputModes: ['text/plain', 'application/json']
+    },
+    {
+      id: 'api_design',
+      name: 'API Design',
+      description: 'Design RESTful APIs, authentication flows, and documentation',
+      tags: ['api', 'rest', 'authentication'],
+      examples: [
+        'Design REST API for user management',
+        'Create authentication flow for mobile app',
+        'Design GraphQL schema for content management'
+      ],
+      inputModes: ['text/plain'],
+      outputModes: ['text/plain', 'application/json']
+    },
+    {
+      id: 'code_generation',
+      name: 'Code Generation',
+      description: 'Generate implementation code, tests, and documentation',
+      tags: ['code', 'implementation', 'testing'],
+      examples: [
+        'Generate Node.js API implementation',
+        'Create React components for dashboard',
+        'Generate test cases for user authentication'
+      ],
+      inputModes: ['text/plain'],
+      outputModes: ['text/plain', 'application/json']
+    },
+    {
+      id: 'project_management',
+      name: 'Project Management',
+      description: 'Break down projects into tasks, estimate timelines, and track progress',
+      tags: ['project', 'planning', 'management'],
+      examples: [
+        'Break down e-commerce project into milestones',
+        'Estimate development timeline for mobile app',
+        'Create task dependencies for team project'
+      ],
+      inputModes: ['text/plain'],
+      outputModes: ['text/plain', 'application/json']
+    }
+  ],
+  supportsAuthenticatedExtendedCard: false
+};
 
-app.use('/workspaces', workspacesRoutes);
+// Serve the A2A Agent Card at the well-known location
+app.get('/.well-known/agent.json', (req, res) => {
+  logger.info('🎯 Serving A2A Agent Card');
+  res.json(DESIGN_AGENT_CARD);
+});
 
-// Workspace-specific project routes
-app.get('/workspaces/:id/projects', projectsController.listProjects);
-app.post('/workspaces/:id/projects', projectsController.createProject);
+// Initialize A2A Server Components
+const taskStore = new InMemoryTaskStore();
+const designAgentExecutor = new DesignAgentExecutor();
 
-app.use('/projects', projectRoutes);
-app.use('/templates', templatesRoutes);
-app.use('/canvas', canvasRoutes);
-app.use('/agents', agentRoutes);
-app.use('/dynamic-prompting', dynamicPromptingRoutes);
+const requestHandler = new DefaultRequestHandler(
+  DESIGN_AGENT_CARD,
+  taskStore,
+  designAgentExecutor
+);
+
+// Setup A2A routes using the SDK
+const a2aApp = new A2AExpressApp(requestHandler);
+a2aApp.setupRoutes(app, '/a2a');
+
+logger.info('🚀 A2A Server routes configured');
+
+// Traditional REST API routes (for backward compatibility)
+app.use('/api/workspaces', authMiddleware, workspaceRoutes);
+app.use('/api/projects', authMiddleware, projectRoutes);
+app.use('/api/canvas', authMiddleware, canvasRoutes);
+app.use('/api/agents', authMiddleware, agentRoutes);
+app.use('/api/templates', authMiddleware, templateRoutes);
+app.use('/api/dynamic-prompting', authMiddleware, dynamicPromptingRoutes);
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ 
+app.use((error, req, res, next) => {
+  logger.error('❌ Unhandled error:', error);
+  res.status(500).json({
     error: 'Internal server error',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: config.environment === 'development' ? error.message : 'Something went wrong'
   });
 });
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    message: `Route ${req.originalUrl} not found`
+  });
 });
 
+// Start the server
+const PORT = config.port || 4000;
 app.listen(PORT, () => {
   logger.info(`🚀 Design microservice running on port ${PORT}`);
-  logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`🔑 Google AI: ${process.env.GOOGLE_AI_KEY ? 'configured' : 'NOT CONFIGURED'}`);
-  logger.info(`🌐 CORS origins: ${corsOptions.origin.join(', ')}`);
+  logger.info(`📊 Environment: ${config.environment}`);
+  logger.info(`🔑 Google AI: ${config.googleAI.apiKey ? 'configured' : 'not configured'}`);
+  logger.info(`🌐 CORS origins: ${config.cors.origins.join(', ')}`);
+  logger.info(`🎯 A2A Agent Card: http://localhost:${PORT}/.well-known/agent.json`);
+  logger.info(`🔄 A2A Endpoints: http://localhost:${PORT}/a2a/*`);
 });
+
+export default app;

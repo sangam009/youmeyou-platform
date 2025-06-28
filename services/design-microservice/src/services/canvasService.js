@@ -5,13 +5,13 @@ import CanvasContent from '../models/canvasContentModel.js';
 import { v4 as uuidv4 } from 'uuid';
 import ProjectMetadataModel from '../models/projectMetadataModel.js';
 import CanvasContentModel from '../models/canvasContentModel.js';
-import AgentOrchestrator from './agents/AgentOrchestrator.js';
+import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
 
 class CanvasService {
   constructor() {
     this.projectMetadataModel = new ProjectMetadataModel();
     this.canvasContentModel = new CanvasContentModel();
-    this.agentOrchestrator = new AgentOrchestrator();
+    this.orchestrator = new AgentOrchestrator();
   }
 
   async createCanvas(userId, projectId, canvasData) {
@@ -37,7 +37,7 @@ class CanvasService {
       };
 
       // Get initial architecture design
-      const design = await this.agentOrchestrator.routeTask(task, context);
+      const design = await this.orchestrator.routeTask(task, context);
 
       // Update canvas with design
       canvas.content = {
@@ -81,7 +81,7 @@ class CanvasService {
           framework: updates.framework
         };
 
-        const result = await this.agentOrchestrator.routeTask(task, context);
+        const result = await this.orchestrator.routeTask(task, context);
         canvas.content.generatedCode = result.code;
         canvas.content.codeAnalysis = result.analysis;
       } 
@@ -91,7 +91,7 @@ class CanvasService {
           requirements: updates.requirements
         };
 
-        const result = await this.agentOrchestrator.routeTask(task, context);
+        const result = await this.orchestrator.routeTask(task, context);
         canvas.content = {
           ...canvas.content,
           design: result.design,
@@ -107,7 +107,7 @@ class CanvasService {
           currentSchema: canvas.content.databaseSchema
         };
 
-        const result = await this.agentOrchestrator.routeTask(task, context);
+        const result = await this.orchestrator.routeTask(task, context);
         canvas.content = {
           ...canvas.content,
           databaseSchema: result.schema,
@@ -125,7 +125,7 @@ class CanvasService {
           content: canvas.content
         };
 
-        const result = await this.agentOrchestrator.routeTask(task, context);
+        const result = await this.orchestrator.routeTask(task, context);
         canvas.content.documentation = result.documentation;
       }
 
@@ -166,8 +166,8 @@ class CanvasService {
       };
 
       const [architectureAnalysis, databaseAnalysis] = await Promise.all([
-        this.agentOrchestrator.routeTask(architectureTask, context),
-        this.agentOrchestrator.routeTask(databaseTask, context)
+        this.orchestrator.routeTask(architectureTask, context),
+        this.orchestrator.routeTask(databaseTask, context)
       ]);
       
       // Update canvas with analysis results

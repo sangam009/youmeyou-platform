@@ -1,253 +1,225 @@
-import { A2AClient } from '@a2a-js/sdk';
 import { config } from '../../config/index.js';
 import logger from '../../utils/logger.js';
-import ArchitectureDesignerAgent from './ArchitectureDesignerAgent.js';
+
+// Import individual agents - fix imports to match actual exports
+import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
 import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
 import APIDesignerAgent from './APIDesignerAgent.js';
 import CodeGeneratorAgent from './CodeGeneratorAgent.js';
+import TechLeadAgent from './TechLeadAgent.js';
+import ProjectManagerAgent from './ProjectManagerAgent.js';
 
-class AgentOrchestrator {
+/**
+ * Agent Orchestrator - Coordinates multiple agents for complex tasks
+ * No longer needs A2A client as it's part of the A2A server
+ */
+export class AgentOrchestrator {
   constructor() {
-    this.client = new A2AClient(config.a2a.baseUrl);
+    // Initialize individual agents (no A2A client needed)
     this.architectureDesigner = new ArchitectureDesignerAgent();
     this.databaseDesigner = new DatabaseDesignerAgent();
     this.apiDesigner = new APIDesignerAgent();
     this.codeGenerator = new CodeGeneratorAgent();
+    this.techLead = new TechLeadAgent();
+    this.projectManager = new ProjectManagerAgent();
     
-    // Task-to-model mapping
-    this.taskModelMap = config.tasks;
+    logger.info('🎯 AgentOrchestrator initialized with all agents');
   }
 
-  async orchestrateTask(task, context) {
+  /**
+   * Analyze task and determine which agents to use
+   */
+  async analyzeTask(userQuery) {
     try {
-      logger.info('Starting task orchestration:', task.type);
+      logger.info(`🔍 Analyzing task: ${userQuery.substring(0, 100)}...`);
 
-      switch (task.type) {
-        case 'ARCHITECTURE_DESIGN':
-          return await this.handleArchitectureDesign(task, context);
-        case 'DATABASE_DESIGN':
-          return await this.handleDatabaseDesign(task, context);
-        case 'API_DESIGN':
-          return await this.handleAPIDesign(task, context);
-        case 'CODE_GENERATION':
-          return await this.handleCodeGeneration(task, context);
-        default:
-          throw new Error(`Unknown task type: ${task.type}`);
+      // Simple keyword-based analysis for now
+      // In production, this would use CPU models for classification
+      const query = userQuery.toLowerCase();
+      const selectedAgents = [];
+      const context = {
+        userQuery,
+        timestamp: new Date().toISOString(),
+        complexity: this.calculateComplexity(query)
+      };
+
+      // Determine task type and required agents
+      if (query.includes('architecture') || query.includes('system') || query.includes('design')) {
+        selectedAgents.push('architectureDesigner');
+        context.type = 'ARCHITECTURE_DESIGN';
       }
+
+      if (query.includes('database') || query.includes('schema') || query.includes('data')) {
+        selectedAgents.push('databaseDesigner');
+        context.type = context.type ? 'FULL_STACK_DESIGN' : 'DATABASE_DESIGN';
+      }
+
+      if (query.includes('api') || query.includes('endpoint') || query.includes('rest')) {
+        selectedAgents.push('apiDesigner');
+        context.type = context.type ? 'FULL_STACK_DESIGN' : 'API_DESIGN';
+      }
+
+      if (query.includes('code') || query.includes('implement') || query.includes('generate')) {
+        selectedAgents.push('codeGenerator');
+        context.type = context.type ? 'FULL_STACK_DESIGN' : 'CODE_GENERATION';
+      }
+
+      if (query.includes('project') || query.includes('plan') || query.includes('manage')) {
+        selectedAgents.push('projectManager');
+        context.type = context.type ? 'FULL_STACK_DESIGN' : 'PROJECT_MANAGEMENT';
+      }
+
+      // Always include tech lead for complex tasks
+      if (selectedAgents.length > 1) {
+        selectedAgents.push('techLead');
+      }
+
+      // Default to project manager if no specific agents selected
+      if (selectedAgents.length === 0) {
+        selectedAgents.push('projectManager');
+        context.type = 'GENERAL_INQUIRY';
+      }
+
+      logger.info(`🎯 Selected agents: ${selectedAgents.join(', ')} for task type: ${context.type}`);
+
+      return {
+        selectedAgents,
+        context,
+        type: context.type,
+        complexity: context.complexity
+      };
+
     } catch (error) {
-      logger.error('Error in task orchestration:', error);
+      logger.error('❌ Error analyzing task:', error);
+      
+      // Fallback to project manager
+      return {
+        selectedAgents: ['projectManager'],
+        context: {
+          userQuery,
+          timestamp: new Date().toISOString(),
+          complexity: 0.5,
+          type: 'FALLBACK'
+        },
+        type: 'FALLBACK',
+        complexity: 0.5
+      };
+    }
+  }
+
+  /**
+   * Calculate task complexity (0-1 scale)
+   */
+  calculateComplexity(query) {
+    let complexity = 0.3; // Base complexity
+
+    // Increase complexity based on keywords
+    const complexKeywords = [
+      'microservices', 'distributed', 'scalable', 'enterprise',
+      'real-time', 'streaming', 'authentication', 'security',
+      'deployment', 'monitoring', 'testing', 'optimization'
+    ];
+
+    const simpleKeywords = [
+      'simple', 'basic', 'quick', 'small', 'minimal'
+    ];
+
+    complexKeywords.forEach(keyword => {
+      if (query.includes(keyword)) {
+        complexity += 0.1;
+      }
+    });
+
+    simpleKeywords.forEach(keyword => {
+      if (query.includes(keyword)) {
+        complexity -= 0.1;
+      }
+    });
+
+    // Increase complexity based on query length
+    if (query.length > 200) complexity += 0.1;
+    if (query.length > 500) complexity += 0.1;
+
+    return Math.max(0.1, Math.min(1.0, complexity));
+  }
+
+  /**
+   * Execute a coordinated task with multiple agents
+   */
+  async executeCoordinatedTask(selectedAgents, userQuery, context) {
+    const results = [];
+    
+    try {
+      logger.info(`🚀 Executing coordinated task with ${selectedAgents.length} agents`);
+
+      for (const agentName of selectedAgents) {
+        const agent = this[agentName];
+        
+        if (!agent) {
+          logger.warn(`⚠️ Agent ${agentName} not found, skipping`);
+          continue;
+        }
+
+        try {
+          logger.info(`🤖 Executing ${agentName}...`);
+          const result = await agent.execute(userQuery, context);
+          results.push({
+            agent: agentName,
+            result: result,
+            timestamp: new Date().toISOString()
+          });
+          
+          logger.info(`✅ ${agentName} completed successfully`);
+        } catch (agentError) {
+          logger.error(`❌ ${agentName} failed:`, agentError);
+          results.push({
+            agent: agentName,
+            error: agentError.message,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      return {
+        success: true,
+        results: results,
+        summary: this.generateSummary(results),
+        metadata: {
+          taskType: context.type,
+          agentsUsed: selectedAgents,
+          complexity: context.complexity,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+    } catch (error) {
+      logger.error('❌ Error in coordinated task execution:', error);
       throw error;
     }
   }
 
-  async handleArchitectureDesign(task, context) {
-    // Use Gemini for complex architecture design
-    const result = await this.architectureDesigner.analyzeArchitecture(
-      task.requirements,
-      context
-    );
+  /**
+   * Generate a summary of all agent results
+   */
+  generateSummary(results) {
+    const successful = results.filter(r => !r.error);
+    const failed = results.filter(r => r.error);
 
-    // Generate diagrams and documentation
-    const diagram = await this.architectureDesigner.generateArchitectureDiagram(result.design);
-    const scalability = await this.architectureDesigner.analyzeScalability(result.design);
-    const optimizations = await this.architectureDesigner.suggestOptimizations(result.design, scalability);
-
-    return {
-      ...result,
-      diagram,
-      scalability,
-      optimizations
-    };
-  }
-
-  async handleDatabaseDesign(task, context) {
-    // Use hybrid approach for database design
-    const result = await this.databaseDesigner.designDatabase(
-      task.requirements,
-      context
-    );
-
-    // Generate additional artifacts
-    const erDiagram = await this.databaseDesigner.generateERDiagram(result.schema);
-    const indexing = await this.databaseDesigner.generateIndexingStrategy(
-      result.schema,
-      result.optimization
-    );
-
-    // If migration is needed
-    let migrationPlan = null;
-    if (task.currentSchema) {
-      migrationPlan = await this.databaseDesigner.analyzeMigrationPath(
-        task.currentSchema,
-        result.schema
-      );
+    let summary = `Task completed with ${successful.length} successful agents`;
+    
+    if (failed.length > 0) {
+      summary += ` and ${failed.length} failed agents`;
     }
 
-    // Validate the schema
-    const validation = await this.databaseDesigner.validateSchema(result.schema);
-
-    // Get optimization suggestions
-    const optimizations = await this.databaseDesigner.suggestOptimizations(
-      result.schema,
-      result.optimization,
-      context.performance
-    );
-
-    return {
-      ...result,
-      erDiagram,
-      indexing,
-      migrationPlan,
-      validation,
-      optimizations
-    };
-  }
-
-  async handleAPIDesign(task, context) {
-    // Use API Designer Agent for endpoint design
-    const result = await this.apiDesigner.designAPI(
-      task.requirements,
-      context
-    );
-
-    // Generate additional artifacts
-    const mockData = await this.apiDesigner.generateMockData(result.endpoints);
-    const validation = await this.apiDesigner.validateAPIDesign(
-      result.endpoints,
-      result.authFlow
-    );
-
-    // Generate client SDKs if requested
-    let clientSDKs = {};
-    if (task.generateSDKs) {
-      for (const language of task.sdkLanguages) {
-        clientSDKs[language] = await this.apiDesigner.generateClientSDK(
-          result.endpoints,
-          language
-        );
-      }
+    if (successful.length > 0) {
+      summary += '\n\nResults:\n';
+      successful.forEach(result => {
+        if (result.result && result.result.content) {
+          summary += `\n${result.agent}: ${result.result.content.substring(0, 200)}...`;
+        }
+      });
     }
 
-    return {
-      ...result,
-      mockData,
-      validation,
-      clientSDKs
-    };
-  }
-
-  async handleCodeGeneration(task, context) {
-    // Use Code Generator Agent for implementation
-    const result = await this.codeGenerator.generateCode(
-      task.requirements,
-      context
-    );
-
-    // Perform additional code-related tasks
-    const optimizedCode = await this.codeGenerator.optimizeCode(
-      result.code,
-      task.performance
-    );
-    const refactoringPlan = await this.codeGenerator.generateRefactoringPlan(
-      result.code,
-      result.analysis
-    );
-    const qualityValidation = await this.codeGenerator.validateCodeQuality(
-      result.code
-    );
-
-    return {
-      ...result,
-      optimizedCode,
-      refactoringPlan,
-      qualityValidation
-    };
-  }
-
-  getModelForTask(taskType) {
-    const model = this.taskModelMap[taskType];
-    if (!model) {
-      throw new Error(`No model configured for task type: ${taskType}`);
-    }
-    return model;
-  }
-
-  async validateTaskCompletion(task, result) {
-    try {
-      // Validate task results based on type
-      switch (task.type) {
-        case 'ARCHITECTURE_DESIGN':
-          return this.validateArchitectureDesign(result);
-        case 'DATABASE_DESIGN':
-          return this.validateDatabaseDesign(result);
-        case 'API_DESIGN':
-          return this.validateAPIDesign(result);
-        case 'CODE_GENERATION':
-          return this.validateCodeGeneration(result);
-        default:
-          throw new Error(`Unknown task type for validation: ${task.type}`);
-      }
-    } catch (error) {
-      logger.error('Error in task validation:', error);
-      throw error;
-    }
-  }
-
-  validateArchitectureDesign(result) {
-    return {
-      isValid: true,
-      hasRequiredComponents: result.design && result.documentation,
-      hasOptionalComponents: result.diagram && result.scalability,
-      qualityScore: this.calculateQualityScore(result)
-    };
-  }
-
-  validateDatabaseDesign(result) {
-    return {
-      isValid: true,
-      hasRequiredComponents: result.schema && result.documentation,
-      hasOptionalComponents: result.erDiagram && result.optimization,
-      qualityScore: this.calculateQualityScore(result)
-    };
-  }
-
-  validateAPIDesign(result) {
-    return {
-      isValid: true,
-      hasRequiredComponents: result.endpoints && result.documentation,
-      hasOptionalComponents: result.mockData && result.clientSDKs,
-      qualityScore: this.calculateQualityScore(result)
-    };
-  }
-
-  validateCodeGeneration(result) {
-    return {
-      isValid: true,
-      hasRequiredComponents: result.code && result.tests,
-      hasOptionalComponents: result.optimizedCode && result.refactoringPlan,
-      qualityScore: this.calculateQualityScore(result)
-    };
-  }
-
-  calculateQualityScore(result) {
-    // Implement quality scoring logic based on completeness and complexity
-    const completeness = this.assessCompleteness(result);
-    const complexity = this.assessComplexity(result);
-    return (completeness + complexity) / 2;
-  }
-
-  assessCompleteness(result) {
-    // Count the number of non-null properties
-    const totalProps = Object.keys(result).length;
-    const nonNullProps = Object.values(result).filter(v => v !== null).length;
-    return (nonNullProps / totalProps) * 100;
-  }
-
-  assessComplexity(result) {
-    // Assess the complexity of the solution
-    // This is a simplified implementation
-    return 85; // Default good score
+    return summary;
   }
 }
-
-export default AgentOrchestrator;
