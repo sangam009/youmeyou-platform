@@ -510,4 +510,5 @@ class AgentController {
   }
 }
 
-module.exports = new AgentController(); 
+const agentController = new AgentController();
+export default agentController; 

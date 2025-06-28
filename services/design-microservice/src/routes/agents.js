@@ -29,4 +29,4 @@ router.post('/collaborate', agentController.collaborateAgents);
 router.get('/capabilities/:agentId?', agentController.getAgentCapabilities);
 router.get('/health', agentController.healthCheck);
 
-module.exports = router; 
+export default router; 

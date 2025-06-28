@@ -14,4 +14,4 @@ router.patch('/:id', templatesController.updateTemplate);
 // DELETE /templates/:id - Delete template
 router.delete('/:id', templatesController.deleteTemplate);
 
-module.exports = router;
+export default router;

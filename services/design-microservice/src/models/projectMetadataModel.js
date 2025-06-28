@@ -333,4 +333,4 @@ class ProjectMetadataModel {
   }
 }
 
-module.exports = ProjectMetadataModel; 
+export default ProjectMetadataModel; 

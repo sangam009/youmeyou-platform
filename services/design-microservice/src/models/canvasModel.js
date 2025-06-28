@@ -316,4 +316,5 @@ class CanvasModel {
   }
 }
 
-module.exports = new CanvasModel(); 
+const canvasModel = new CanvasModel();
+export default canvasModel; 

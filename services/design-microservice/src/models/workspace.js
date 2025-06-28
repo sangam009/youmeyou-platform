@@ -97,4 +97,4 @@ class Workspace {
   }
 }
 
-module.exports = Workspace;
+export default Workspace;

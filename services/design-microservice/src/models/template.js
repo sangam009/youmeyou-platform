@@ -53,4 +53,4 @@ const Template = {
   }
 };
 
-module.exports = Template;
+export default Template;

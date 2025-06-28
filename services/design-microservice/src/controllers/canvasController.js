@@ -229,4 +229,5 @@ class CanvasController {
   }
 }
 
-module.exports = new CanvasController(); 
+const canvasController = new CanvasController();
+export default canvasController; 

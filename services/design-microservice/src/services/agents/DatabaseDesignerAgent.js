@@ -1,6 +1,6 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '../../../config/index.js';
-import logger from '../../utils/logger.js';
+import { config } from '/app/config/index.js';
+import logger from '/app/src/utils/logger.js';
 
 class DatabaseDesignerAgent {
   constructor(a2aClient) {
@@ -312,4 +312,4 @@ class DatabaseDesignerAgent {
   }
 }
 
-module.exports = DatabaseDesignerAgent;
+export default DatabaseDesignerAgent;

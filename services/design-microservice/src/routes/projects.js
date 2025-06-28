@@ -14,4 +14,4 @@ router.patch('/:id', projectsController.renameProject);
 // DELETE /projects/:id - Delete project
 router.delete('/:id', projectsController.deleteProject);
 
-module.exports = router;
+export default router;

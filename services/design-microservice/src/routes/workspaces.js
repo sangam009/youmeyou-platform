@@ -14,4 +14,4 @@ router.post('/:id/switch', workspacesController.switchWorkspace);
 // POST /workspaces/:id/invite - Invite user to workspace (future)
 router.post('/:id/invite', workspacesController.inviteToWorkspace);
 
-module.exports = router;
+export default router;
