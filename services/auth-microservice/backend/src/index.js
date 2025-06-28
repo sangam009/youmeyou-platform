@@ -42,32 +42,31 @@ const connectRedis = async () => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS configuration - support both development and production
-const getCorsOrigins = () => {
-  const corsOrigin = process.env.CORS_ORIGIN;
-  if (corsOrigin) {
-    return corsOrigin.split(',').map(origin => origin.trim());
-  }
-  
-  // Default development origins
-  return [
-    'http://localhost:3000',
-    'http://localhost:3001', 
-    'http://localhost:4000',
-    'https://youmeyou.ai',
-    'https://staging.youmeyou.ai'
-  ];
-};
-
-// Middleware
-app.use(helmet()); // Security headers
-app.use(cors({
-  origin: getCorsOrigins(),
+// CORS configuration
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [];
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+    
+    // In production, only allow youmeyou.ai domains
+    if (isProduction) {
+      const isAllowed = origin && (
+        origin.endsWith('youmeyou.ai') || 
+        allowedOrigins.includes(origin)
+      );
+      callback(null, isAllowed);
+    } else {
+      // In development, allow configured origins
+      callback(null, origin);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 200 // Support legacy browsers
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(helmet()); // Security headers
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -78,6 +77,7 @@ const initializeSession = async () => {
   
   // Session configuration with Redis
   const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+  const domain = isProduction ? '.youmeyou.ai' : undefined;
   
   app.use(session({
     store: new RedisStore({ 
@@ -87,12 +87,12 @@ const initializeSession = async () => {
     secret: process.env.SESSION_SECRET || 'default_secret_for_dev',
     resave: false,
     saveUninitialized: false,
-    name: 'connect.sid', // Explicitly set the session cookie name
+    name: 'connect.sid',
     cookie: {
-      secure: false, // Keep as false since internal services use HTTP
+      secure: isProduction, // Set to true in production
       httpOnly: true,
-      sameSite: 'lax', // Use lax for better compatibility
-      domain: isProduction ? '.youmeyou.ai' : undefined, // Set domain for production
+      sameSite: isProduction ? 'none' : 'lax', // Use 'none' for cross-site in production
+      domain: domain,
       path: '/',
       maxAge: parseInt(process.env.REDIS_TTL || '86400', 10) * 1000 // convert seconds to milliseconds
     }

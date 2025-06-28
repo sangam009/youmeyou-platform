@@ -73,7 +73,7 @@ class A2AService {
         task.content,
         { ...context, ...analysis.context }
       );
-
+      
       return {
         taskId,
         status: 'completed',
