@@ -8,8 +8,22 @@ export interface UserProfile {
   phoneNumber: string | null;
 }
 
+// Determine the base URL based on the current hostname
+const getBaseUrl = () => {
+  if (typeof window === 'undefined') return process.env.NEXT_PUBLIC_API_URL || 'https://youmeyou.ai';
+  
+  const hostname = window.location.hostname;
+  if (hostname.includes('staging')) {
+    return 'https://staging.youmeyou.ai';
+  }
+  if (hostname.includes('localhost')) {
+    return 'http://localhost:4000';
+  }
+  return 'https://youmeyou.ai';
+};
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json'
   }
@@ -39,19 +53,19 @@ api.interceptors.response.use(
 
 export const authApi = {
   createUser: async (provider: string, data: any) => {
-    const response = await api.post('/auth/users', data);
+    const response = await api.post('/api/auth/users', data);
     return response.data;
   },
   getUser: async (user: UserProfile) => {
-    const response = await api.get(`/auth/users/${user.uid}`);
+    const response = await api.get(`/api/auth/users/${user.uid}`);
     return response.data;
   },
   checkSession: async () => {
-    const response = await api.get('/auth/session');
+    const response = await api.get('/api/auth/session');
     return response.data;
   },
   logout: async () => {
-    const response = await api.post('/auth/logout');
+    const response = await api.post('/api/auth/logout');
     return response.data;
   }
 };
