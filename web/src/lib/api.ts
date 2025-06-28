@@ -1,5 +1,13 @@
 import axios from 'axios';
 
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  phoneNumber: string | null;
+}
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
   headers: {
@@ -28,5 +36,24 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const authApi = {
+  createUser: async (provider: string, data: any) => {
+    const response = await api.post('/auth/users', data);
+    return response.data;
+  },
+  getUser: async (user: UserProfile) => {
+    const response = await api.get(`/auth/users/${user.uid}`);
+    return response.data;
+  },
+  checkSession: async () => {
+    const response = await api.get('/auth/session');
+    return response.data;
+  },
+  logout: async () => {
+    const response = await api.post('/auth/logout');
+    return response.data;
+  }
+};
 
 export default api;
