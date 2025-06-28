@@ -1,4 +1,4 @@
-const mysql = require('mysql2/promise');
+import mongoose from 'mongoose';
 const logger = require('../utils/logger');
 
 // Database connection configuration
@@ -9,6 +9,13 @@ const dbConfig = {
   password: process.env.MYSQL_PASSWORD || 'password',
   database: process.env.MYSQL_DATABASE || 'designmicroservice'
 };
+
+const canvasSchema = new mongoose.Schema({
+  // ... existing code ...
+});
+
+const Canvas = mongoose.model('Canvas', canvasSchema);
+export default Canvas;
 
 class CanvasModel {
   constructor() {

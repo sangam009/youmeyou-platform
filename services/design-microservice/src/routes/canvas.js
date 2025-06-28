@@ -1,8 +1,10 @@
-const express = require('express');
+import express from 'express';
+import a2aService from '../services/a2aService.js';
+import canvasService from '../services/canvasService.js';
+import logger from '../utils/logger.js';
+import dynamicPromptingRoutes from './dynamicPrompting.js';
+
 const router = express.Router();
-const a2aService = require('../services/a2aService');
-const canvasService = require('../services/canvasService');
-const logger = require('../utils/logger');
 
 // Stream A2A responses for canvas operations
 router.get('/stream', async (req, res) => {
@@ -166,7 +168,6 @@ router.get('/architecture/:clientId', async (req, res) => {
 });
 
 // Phase 3: Dynamic Prompting Routes
-const dynamicPromptingRoutes = require('./dynamicPrompting');
 router.use('/dynamic-prompting', dynamicPromptingRoutes);
 
-module.exports = router;
+export default router;
