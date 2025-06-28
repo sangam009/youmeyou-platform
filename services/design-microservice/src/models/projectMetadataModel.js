@@ -1,5 +1,5 @@
-const mysql = require('mysql2/promise');
-const logger = require('../utils/logger');
+import mysql from 'mysql2/promise';
+import logger from '/app/src/utils/logger.js';
 
 // MySQL Database connection configuration for metadata
 const dbConfig = {

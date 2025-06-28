@@ -1,5 +1,5 @@
-const a2aService = require('../services/a2aService');
-const logger = require('../utils/logger');
+import a2aService from '/app/src/services/a2aService.js';
+import logger from '/app/src/utils/logger.js';
 
 class AgentController {
   async routeTask(req, res) {
@@ -136,40 +136,12 @@ class AgentController {
 
   async suggestImprovements(req, res) {
     try {
-      const { canvasData, focusArea } = req.body;
-      const userId = req.user?.userId || 'dummy-user-id';
-      
-      if (!canvasData) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Canvas data is required'
-        });
-      }
-      
-      const focusPrompt = focusArea ? `Focus on ${focusArea} improvements.` : '';
-      
-      logger.info(`Improvement suggestions request from user ${userId}, focus: ${focusArea || 'general'}`);
-      
-      const task = {
-        type: 'improvement',
-        content: `Suggest improvements for this architecture. ${focusPrompt} Provide specific, actionable recommendations.`,
-        canvasState: canvasData,
-        userId,
-        timestamp: new Date()
-      };
-      
-      const response = await a2aService.routeTask(task);
-      
-      res.json({
-        status: 'success',
-        data: response
-      });
+      const { code, context } = req.body;
+      const suggestions = await a2aService.suggestImprovements(code, context);
+      res.json(suggestions);
     } catch (error) {
       logger.error('Error suggesting improvements:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to suggest improvements'
-      });
+      res.status(500).json({ error: 'Failed to suggest improvements' });
     }
   }
 
@@ -404,44 +376,12 @@ class AgentController {
 
   async generateCode(req, res) {
     try {
-      const { component, requirements } = req.body;
-      
-      if (!component) {
-        return res.status(400).json({ 
-          error: 'Component is required for code generation' 
-        });
-      }
-
-      logger.info(`Code generation request for: ${component.data?.label}`);
-
-      // Create specialized task for code generation
-      const task = {
-        type: 'code-generation',
-        content: `Generate production-ready code for this component: ${requirements || 'Full implementation with best practices'}`,
-        component: component,
-        canvasState: req.body.canvasState || {},
-        userId: req.user?.id || 'anonymous',
-        timestamp: new Date()
-      };
-
-      // Route to appropriate agent (likely API or Architecture agent)
-      const result = await a2aService.routeTask(task);
-
-      res.json({
-        success: true,
-        agent: result.agentName,
-        codeGeneration: result.response.data?.codeGeneration || null,
-        analysis: result.response.data?.analysis || '',
-        suggestions: result.response.data?.suggestions || [],
-        executedAt: result.executedAt
-      });
-
+      const { prompt, context } = req.body;
+      const code = await a2aService.generateCode(prompt, context);
+      res.json(code);
     } catch (error) {
-      logger.error('Error in code generation:', error);
-      res.status(500).json({ 
-        error: 'Failed to generate code',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
+      logger.error('Error generating code:', error);
+      res.status(500).json({ error: 'Failed to generate code' });
     }
   }
 
@@ -506,6 +446,28 @@ class AgentController {
         error: 'Failed to get agent status',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+    }
+  }
+
+  async analyzeCode(req, res) {
+    try {
+      const { code, context } = req.body;
+      const analysis = await a2aService.analyzeCode(code, context);
+      res.json(analysis);
+    } catch (error) {
+      logger.error('Error analyzing code:', error);
+      res.status(500).json({ error: 'Failed to analyze code' });
+    }
+  }
+
+  async reviewCode(req, res) {
+    try {
+      const { code, context } = req.body;
+      const review = await a2aService.reviewCode(code, context);
+      res.json(review);
+    } catch (error) {
+      logger.error('Error reviewing code:', error);
+      res.status(500).json({ error: 'Failed to review code' });
     }
   }
 }

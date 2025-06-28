@@ -1,6 +1,8 @@
-const express = require('express');
+import express from 'express';
+import projectsController from '/app/src/controllers/projectsController.js';
+import auth from '/app/src/middleware/auth.js';
+
 const router = express.Router();
-const projectsController = require('../controllers/projectsController');
 
 // GET /workspaces/:id/projects - List projects in workspace
 router.get('/workspaces/:id/projects', projectsController.listProjects);

@@ -1,7 +1,8 @@
-const express = require('express');
+import express from 'express';
+import agentController from '/app/src/controllers/agentController.js';
+import auth from '/app/src/middleware/auth.js';
+
 const router = express.Router();
-const agentController = require('../controllers/agentController');
-const auth = require('../middleware/auth');
 
 // Apply auth middleware to all routes
 router.use(auth);
@@ -10,7 +11,7 @@ router.use(auth);
 router.post('/task', agentController.routeTask);
 router.post('/chat', agentController.chat);
 router.post('/generate-code', agentController.generateCode);
-router.post('/analyze', agentController.analyze);
+router.post('/analyze', agentController.analyzeCode);
 router.get('/status', agentController.getAgents);
 
 // Legacy endpoint (keeping for backward compatibility)

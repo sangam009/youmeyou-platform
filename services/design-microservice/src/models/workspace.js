@@ -1,99 +1,48 @@
-const { MongoClient, ObjectId } = require('mongodb');
-const logger = require('../utils/logger');
+import { MongoClient, ObjectId } from 'mongodb';
+import logger from '/app/src/utils/logger.js';
 
-class WorkspaceModel {
-  constructor() {
-    this.uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-    this.dbName = process.env.MONGODB_DB || 'designmicroservice';
-    this.client = null;
-    this.db = null;
-  }
-
-  async connect() {
-    if (!this.client) {
-      this.client = new MongoClient(this.uri);
-      await this.client.connect();
-      this.db = this.client.db(this.dbName);
-      logger.info('Connected to MongoDB for workspaces');
-    }
-    return this.db;
-  }
-
-  async getCollection() {
-    const db = await this.connect();
-    return db.collection('workspaces');
-  }
-}
-
-// Create a singleton instance
-const workspaceModel = new WorkspaceModel();
-
-// Workspace class that mimics Mongoose behavior
 class Workspace {
-  constructor(data) {
-    this.name = data.name;
-    this.userId = data.userId;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+  static async findByUserId(userId) {
+    const db = await this.connect();
+    const collection = db.collection('workspaces');
+    return await collection.find({ userId }).toArray();
   }
 
-  async save() {
-    const collection = await workspaceModel.getCollection();
-    const result = await collection.insertOne({
-      name: this.name,
-      userId: this.userId,
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt
-    });
-    
-    this._id = result.insertedId;
-    return this;
+  static async create(data) {
+    const db = await this.connect();
+    const collection = db.collection('workspaces');
+    const result = await collection.insertOne(data);
+    return { id: result.insertedId, ...data };
   }
 
-  static async find(query = {}) {
-    const collection = await workspaceModel.getCollection();
-    const cursor = collection.find(query);
-    return await cursor.toArray();
+  static async update(id, data) {
+    const db = await this.connect();
+    const collection = db.collection('workspaces');
+    await collection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: data }
+    );
+    return await this.findById(id);
   }
 
-  static async findOne(query = {}) {
-    const collection = await workspaceModel.getCollection();
-    return await collection.findOne(query);
+  static async delete(id) {
+    const db = await this.connect();
+    const collection = db.collection('workspaces');
+    const result = await collection.deleteOne({ _id: new ObjectId(id) });
+    return result.deletedCount > 0;
   }
 
   static async findById(id) {
-    const collection = await workspaceModel.getCollection();
+    const db = await this.connect();
+    const collection = db.collection('workspaces');
     return await collection.findOne({ _id: new ObjectId(id) });
   }
 
-  static async updateOne(query, update) {
-    const collection = await workspaceModel.getCollection();
-    return await collection.updateOne(query, { $set: { ...update, updatedAt: new Date() } });
-  }
-
-  static async deleteOne(query) {
-    const collection = await workspaceModel.getCollection();
-    return await collection.deleteOne(query);
-  }
-
-  // Method to select specific fields (mimics Mongoose .select())
-  static select(fields) {
-    return {
-      async find(query = {}) {
-        const collection = await workspaceModel.getCollection();
-        const projection = {};
-        if (typeof fields === 'string') {
-          fields.split(' ').forEach(field => {
-            if (field.startsWith('-')) {
-              projection[field.slice(1)] = 0;
-            } else {
-              projection[field] = 1;
-            }
-          });
-        }
-        return await collection.find(query, { projection }).toArray();
-      }
-    };
+  static async connect() {
+    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+    const dbName = process.env.MONGODB_DB || 'designmicroservice';
+    const client = await MongoClient.connect(uri);
+    return client.db(dbName);
   }
 }
 

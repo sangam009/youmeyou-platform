@@ -1,12 +1,14 @@
-const express = require('express');
+import express from 'express';
+import workspacesController from '/app/src/controllers/workspacesController.js';
+import auth from '/app/src/middleware/auth.js';
+
 const router = express.Router();
-const workspacesController = require('../controllers/workspacesController');
 
 // GET /workspaces - List user workspaces
-router.get('/', workspacesController.listWorkspaces);
+router.get('/', auth, workspacesController.listWorkspaces);
 
 // POST /workspaces - Create new workspace
-router.post('/', workspacesController.createWorkspace);
+router.post('/', auth, workspacesController.createWorkspace);
 
 // POST /workspaces/:id/switch - Switch active workspace
 router.post('/:id/switch', workspacesController.switchWorkspace);

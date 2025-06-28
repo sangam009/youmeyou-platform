@@ -1,7 +1,10 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const auth = require('../middleware/auth');
+import express from 'express';
+import { body, validationResult } from 'express-validator';
+import auth from '/app/src/middleware/auth.js';
+import DynamicPromptingService from '/app/src/services/DynamicPromptingService.js';
+
 const router = express.Router();
+const dynamicPromptingService = new DynamicPromptingService();
 
 /**
  * Phase 3: Dynamic Prompting Routes

@@ -1,38 +1,53 @@
-const Template = require('../models/template');
+import Template from '/app/src/models/template.js';
+import logger from '/app/src/utils/logger.js';
 
-exports.listTemplates = async (req, res) => {
-  const userId = req.session.userId;
-  const { projectId } = req.params;
-  const templates = await Template.findByProjectId(projectId);
-  res.json(templates);
-};
-
-exports.createTemplate = async (req, res) => {
-  const userId = req.session.userId;
-  const { projectId } = req.body;
-  const { name, data } = req.body;
-  const template = await Template.create({ name, projectId, data });
-  res.status(201).json(template);
-};
-
-exports.updateTemplate = async (req, res) => {
-  const userId = req.session.userId;
-  const { id } = req.params;
-  const template = await Template.findById(id);
-  if (!template) {
-    return res.status(404).json({ error: 'Template not found' });
+class TemplatesController {
+  async listTemplates(req, res) {
+    try {
+      const { projectId } = req.params;
+      const templates = await Template.findByProjectId(projectId);
+      res.json(templates);
+    } catch (error) {
+      logger.error('Error listing templates:', error);
+      res.status(500).json({ error: 'Failed to list templates' });
+    }
   }
-  const updatedTemplate = await Template.update(id, { name: req.body.name, data: req.body.data });
-  res.json(updatedTemplate);
-};
 
-exports.deleteTemplate = async (req, res) => {
-  const userId = req.session.userId;
-  const { id } = req.params;
-  const template = await Template.findById(id);
-  if (!template) {
-    return res.status(404).json({ error: 'Template not found' });
+  async createTemplate(req, res) {
+    try {
+      const { projectId } = req.params;
+      const { name, data } = req.body;
+      const template = await Template.create({ name, projectId, data });
+      res.status(201).json(template);
+    } catch (error) {
+      logger.error('Error creating template:', error);
+      res.status(500).json({ error: 'Failed to create template' });
+    }
   }
-  await Template.delete(id);
-  res.json({ status: 'deleted', id });
-};
+
+  async updateTemplate(req, res) {
+    try {
+      const { id } = req.params;
+      const { name, data } = req.body;
+      const template = await Template.update(id, { name, data });
+      res.json(template);
+    } catch (error) {
+      logger.error('Error updating template:', error);
+      res.status(500).json({ error: 'Failed to update template' });
+    }
+  }
+
+  async deleteTemplate(req, res) {
+    try {
+      const { id } = req.params;
+      await Template.delete(id);
+      res.json({ status: 'deleted', id });
+    } catch (error) {
+      logger.error('Error deleting template:', error);
+      res.status(500).json({ error: 'Failed to delete template' });
+    }
+  }
+}
+
+const templatesController = new TemplatesController();
+export default templatesController;

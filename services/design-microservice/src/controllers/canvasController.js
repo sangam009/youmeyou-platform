@@ -1,5 +1,5 @@
-const canvasService = require('../services/canvasService');
-const logger = require('../utils/logger');
+import canvasService from '/app/src/services/canvasService.js';
+import logger from '/app/src/utils/logger.js';
 
 class CanvasController {
   async createCanvas(req, res) {

@@ -1,17 +1,19 @@
-const express = require('express');
+import express from 'express';
+import templatesController from '/app/src/controllers/templatesController.js';
+import auth from '/app/src/middleware/auth.js';
+
 const router = express.Router();
-const templatesController = require('../controllers/templatesController');
 
 // GET /templates - List available templates
-router.get('/:projectId', templatesController.listTemplates);
+router.get('/:projectId/templates', auth, templatesController.listTemplates);
 
 // POST /templates - Create new template
-router.post('/', templatesController.createTemplate);
+router.post('/:projectId/templates', auth, templatesController.createTemplate);
 
 // PATCH /templates/:id - Update template
-router.patch('/:id', templatesController.updateTemplate);
+router.put('/templates/:id', auth, templatesController.updateTemplate);
 
 // DELETE /templates/:id - Delete template
-router.delete('/:id', templatesController.deleteTemplate);
+router.delete('/templates/:id', auth, templatesController.deleteTemplate);
 
 export default router;
