@@ -4,7 +4,6 @@ import logger from '../../utils/logger.js';
 import ArchitectureDesignerAgent from './ArchitectureDesignerAgent.js';
 import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
 import APIDesignerAgent from './APIDesignerAgent.js';
-import SecurityAnalystAgent from './SecurityAnalystAgent.js';
 import CodeGeneratorAgent from './CodeGeneratorAgent.js';
 
 class AgentOrchestrator {
@@ -18,7 +17,6 @@ class AgentOrchestrator {
     this.architectureDesigner = new ArchitectureDesignerAgent(this.a2aClient);
     this.databaseDesigner = new DatabaseDesignerAgent(this.a2aClient);
     this.apiDesigner = new APIDesignerAgent(this.a2aClient);
-    this.securityAnalyst = new SecurityAnalystAgent(this.a2aClient);
     this.codeGenerator = new CodeGeneratorAgent(this.a2aClient);
     
     // Task-to-model mapping
@@ -36,8 +34,6 @@ class AgentOrchestrator {
           return await this.handleDatabaseDesign(task, context);
         case 'API_DESIGN':
           return await this.handleAPIDesign(task, context);
-        case 'SECURITY_ANALYSIS':
-          return await this.handleSecurityAnalysis(task, context);
         case 'CODE_GENERATION':
           return await this.handleCodeGeneration(task, context);
         default:
@@ -145,32 +141,6 @@ class AgentOrchestrator {
     };
   }
 
-  async handleSecurityAnalysis(task, context) {
-    // Use Security Analyst Agent for security assessment
-    const result = await this.securityAnalyst.analyzeSecurity(
-      task.codebase,
-      context
-    );
-
-    // Generate additional security artifacts
-    const policies = await this.securityAnalyst.generateSecurityPolicies(context);
-    const improvements = await this.securityAnalyst.suggestSecurityImprovements(
-      result.vulnerabilities,
-      result.risks
-    );
-    const testPlan = await this.securityAnalyst.generateSecurityTestPlan(
-      task.codebase,
-      result.vulnerabilities
-    );
-
-    return {
-      ...result,
-      policies,
-      improvements,
-      testPlan
-    };
-  }
-
   async handleCodeGeneration(task, context) {
     // Use Code Generator Agent for implementation
     const result = await this.codeGenerator.generateCode(
@@ -217,8 +187,6 @@ class AgentOrchestrator {
           return this.validateDatabaseDesign(result);
         case 'API_DESIGN':
           return this.validateAPIDesign(result);
-        case 'SECURITY_ANALYSIS':
-          return this.validateSecurityAnalysis(result);
         case 'CODE_GENERATION':
           return this.validateCodeGeneration(result);
         default:
@@ -253,15 +221,6 @@ class AgentOrchestrator {
       isValid: true,
       hasRequiredComponents: result.endpoints && result.documentation,
       hasOptionalComponents: result.mockData && result.clientSDKs,
-      qualityScore: this.calculateQualityScore(result)
-    };
-  }
-
-  validateSecurityAnalysis(result) {
-    return {
-      isValid: true,
-      hasRequiredComponents: result.vulnerabilities && result.documentation,
-      hasOptionalComponents: result.improvements && result.testPlan,
       qualityScore: this.calculateQualityScore(result)
     };
   }
