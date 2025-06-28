@@ -1,19 +1,19 @@
-const { createLogger, format, transports } = require('winston');
+import winston from 'winston';
 
-const logger = createLogger({
-  level: 'info',
-  format: format.combine(
-    format.timestamp(),
-    format.colorize(),
-    format.printf(({ timestamp, level, message, ...meta }) => {
-      return `[${timestamp}] ${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
-    })
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
   ),
   transports: [
-    new transports.Console(),
-    // Uncomment to log to file:
-    // new transports.File({ filename: 'logs/app.log' })
-  ],
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
 });
 
-module.exports = logger; 
+export default logger; 

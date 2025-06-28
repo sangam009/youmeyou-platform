@@ -1,17 +1,21 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const morgan = require('morgan');
-const logger = require('./utils/logger');
-const cookieParser = require('cookie-parser');
-const requireAuth = require('./middleware/auth');
-const workspacesRoutes = require('./routes/workspaces');
-const projectsRoutes = require('./routes/projects');
-const templatesRoutes = require('./routes/templates');
-const canvasRoutes = require('./routes/canvas');
-const agentRoutes = require('./routes/agents');
-const projectsController = require('./controllers/projectsController');
+import express from 'express';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import logger from './utils/logger.js';
+import cookieParser from 'cookie-parser';
+import requireAuth from './middleware/auth.js';
+import workspacesRoutes from './routes/workspaces.js';
+import projectRoutes from './routes/projects.js';
+import templatesRoutes from './routes/templates.js';
+import canvasRoutes from './routes/canvas.js';
+import agentRoutes from './routes/agents.js';
+import dynamicPromptingRoutes from './routes/dynamicPrompting.js';
+import projectsController from './controllers/projectsController.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load environment variables from .txt files
 function loadEnvFromFile() {
@@ -80,10 +84,11 @@ app.use('/workspaces', workspacesRoutes);
 app.get('/workspaces/:id/projects', projectsController.listProjects);
 app.post('/workspaces/:id/projects', projectsController.createProject);
 
-app.use('/projects', projectsRoutes);
+app.use('/projects', projectRoutes);
 app.use('/templates', templatesRoutes);
 app.use('/canvas', canvasRoutes);
 app.use('/agents', agentRoutes);
+app.use('/dynamic-prompting', dynamicPromptingRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
