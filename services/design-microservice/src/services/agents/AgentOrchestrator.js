@@ -1,10 +1,10 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '../../../config/index.js';
-import logger from '../../utils/logger.js';
-import ArchitectureDesignerAgent from './ArchitectureDesignerAgent.js';
-import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
-import APIDesignerAgent from './APIDesignerAgent.js';
-import CodeGeneratorAgent from './CodeGeneratorAgent.js';
+import { config } from '/app/src/config/index.js';
+import logger from '/app/src/utils/logger.js';
+import ArchitectureDesignerAgent from '/app/src/services/agents/ArchitectureDesignerAgent.js';
+import DatabaseDesignerAgent from '/app/src/services/agents/DatabaseDesignerAgent.js';
+import APIDesignerAgent from '/app/src/services/agents/APIDesignerAgent.js';
+import CodeGeneratorAgent from '/app/src/services/agents/CodeGeneratorAgent.js';
 
 class AgentOrchestrator {
   constructor() {
