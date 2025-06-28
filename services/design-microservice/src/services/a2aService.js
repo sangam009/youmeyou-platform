@@ -1,11 +1,11 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { A2AClient } = require('@a2a-js/sdk');
-const logger = require('../utils/logger');
-const A2AAdapter = require('./agents/A2AAdapter');
-const ProjectManagerAgent = require('./agents/ProjectManagerAgent');
-const TechLeadAgent = require('./agents/TechLeadAgent');
-const AgentOrchestrator = require('./agents/AgentOrchestrator');
-const DynamicPromptingService = require('./DynamicPromptingService');
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { A2AClient } from '@a2a-js/sdk';
+import logger from '../utils/logger';
+import A2AAdapter from './agents/A2AAdapter';
+import ProjectManagerAgent from './agents/ProjectManagerAgent';
+import TechLeadAgent from './agents/TechLeadAgent';
+import AgentOrchestrator from './agents/AgentOrchestrator';
+import DynamicPromptingService from './DynamicPromptingService';
 
 class A2AService {
   constructor() {
@@ -1600,4 +1600,4 @@ Respond in a clear, actionable format that helps the user improve their system d
   }
 }
 
-module.exports = new A2AService();
+export default new A2AService();
