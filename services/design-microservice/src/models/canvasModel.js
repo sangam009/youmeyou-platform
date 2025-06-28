@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
-const logger = require('../utils/logger');
+import logger from '/app/src/utils/logger.js';
+import mysql from 'mysql2/promise';
 
 // Database connection configuration
 const dbConfig = {
@@ -15,7 +16,6 @@ const canvasSchema = new mongoose.Schema({
 });
 
 const Canvas = mongoose.model('Canvas', canvasSchema);
-export default Canvas;
 
 class CanvasModel {
   constructor() {
