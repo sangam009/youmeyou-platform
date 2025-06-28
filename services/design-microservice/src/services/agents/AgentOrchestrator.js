@@ -1,5 +1,5 @@
 import { A2AClient } from '@a2a-js/sdk';
-import { config } from '/app/src/config/index.js';
+import { config } from '/app/config/index.js';
 import logger from '/app/src/utils/logger.js';
 import ArchitectureDesignerAgent from '/app/src/services/agents/ArchitectureDesignerAgent.js';
 import DatabaseDesignerAgent from '/app/src/services/agents/DatabaseDesignerAgent.js';
