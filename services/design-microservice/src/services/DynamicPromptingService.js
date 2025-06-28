@@ -1,4 +1,4 @@
-const logger = require('../utils/logger');
+import logger from '/app/src/utils/logger.js';
 
 /**
  * Dynamic Prompting Service - Phase 3 Implementation
@@ -506,4 +506,4 @@ Please provide a comprehensive analysis and recommendations for this request.`;
   }
 }
 
-module.exports = DynamicPromptingService; 
+export default DynamicPromptingService; 

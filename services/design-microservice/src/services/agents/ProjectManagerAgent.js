@@ -1,5 +1,5 @@
-const logger = require('../../utils/logger');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+import logger from '../../utils/logger.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 class ProjectManagerAgent {
   constructor(config = {}) {
@@ -287,4 +287,4 @@ class ProjectManagerAgent {
   }
 }
 
-module.exports = ProjectManagerAgent; 
+export default ProjectManagerAgent; 

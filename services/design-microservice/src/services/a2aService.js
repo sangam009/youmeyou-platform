@@ -1,11 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { A2AClient } from '@a2a-js/sdk';
-import logger from '../utils/logger';
-import A2AAdapter from './agents/A2AAdapter';
-import ProjectManagerAgent from './agents/ProjectManagerAgent';
-import TechLeadAgent from './agents/TechLeadAgent';
-import AgentOrchestrator from './agents/AgentOrchestrator';
-import DynamicPromptingService from './DynamicPromptingService';
+import logger from '/app/src/utils/logger.js';
+import A2AAdapter from '/app/src/services/agents/A2AAdapter.js';
+import ProjectManagerAgent from '/app/src/services/agents/ProjectManagerAgent.js';
+import TechLeadAgent from '/app/src/services/agents/TechLeadAgent.js';
+import AgentOrchestrator from '/app/src/services/agents/AgentOrchestrator.js';
+import DynamicPromptingService from '/app/src/services/DynamicPromptingService.js';
 
 class A2AService {
   constructor() {

@@ -1,5 +1,5 @@
-const logger = require('../../utils/logger');
-const AgentOrchestrator = require('./AgentOrchestrator');
+import logger from '/app/src/utils/logger.js';
+import AgentOrchestrator from '/app/src/services/agents/AgentOrchestrator.js';
 
 class A2AAdapter {
   constructor() {
@@ -103,4 +103,4 @@ class A2AAdapter {
   }
 }
 
-module.exports = A2AAdapter; 
+export default A2AAdapter; 

@@ -1,6 +1,6 @@
-const { A2AClient } = require('@a2a-js/sdk');
-const { config } = require('../../../config');
-const logger = require('../../utils/logger');
+import { A2AClient } from '@a2a-js/sdk';
+import { config } from '/app/config/index.js';
+import logger from '/app/src/utils/logger.js';
 
 class APIDesignerAgent {
   constructor(a2aClient) {
@@ -232,4 +232,4 @@ class APIDesignerAgent {
   }
 }
 
-module.exports = APIDesignerAgent;
+export default APIDesignerAgent;

@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
+import fs from 'fs';
+import morgan from 'morgan';
 import logger from './utils/logger.js';
 import cookieParser from 'cookie-parser';
 import requireAuth from './middleware/auth.js';
@@ -20,7 +22,7 @@ const __dirname = dirname(__filename);
 // Load environment variables from .txt files
 function loadEnvFromFile() {
   const env = process.env.NODE_ENV || 'development';
-  const envFilePath = path.join(__dirname, '..', `env.${env}.txt`);
+  const envFilePath = join(__dirname, '..', `env.${env}.txt`);
   
   if (fs.existsSync(envFilePath)) {
     const envContent = fs.readFileSync(envFilePath, 'utf8');

@@ -1,6 +1,6 @@
-const { A2AClient } = require('@a2a-js/sdk');
-const { config } = require('../../../config');
-const logger = require('../../utils/logger');
+import { A2AClient } from '@a2a-js/sdk';
+import { config } from '../../../config/index.js';
+import logger from '../../utils/logger.js';
 
 class DatabaseDesignerAgent {
   constructor(a2aClient) {

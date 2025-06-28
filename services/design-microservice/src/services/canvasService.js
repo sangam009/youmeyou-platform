@@ -1,10 +1,11 @@
-const { v4: uuidv4 } = require('uuid');
-const ProjectMetadataModel = require('../models/projectMetadataModel');
-const CanvasContentModel = require('../models/canvasContentModel');
-const logger = require('../utils/logger');
-const Canvas = require('../models/canvasModel');
-const CanvasContent = require('../models/canvasContentModel');
-const AgentOrchestrator = require('./agents/AgentOrchestrator');
+import mongoose from 'mongoose';
+import logger from '../utils/logger.js';
+import Canvas from '../models/canvasModel.js';
+import CanvasContent from '../models/canvasContentModel.js';
+import { v4: uuidv4 } from 'uuid';
+import ProjectMetadataModel from '../models/projectMetadataModel';
+import CanvasContentModel from '../models/canvasContentModel';
+import AgentOrchestrator from './agents/AgentOrchestrator';
 
 class CanvasService {
   constructor() {
@@ -16,7 +17,7 @@ class CanvasService {
   async createCanvas(userId, projectId, canvasData) {
     try {
       // Create new canvas
-      const canvas = await CanvasModel.create({
+      const canvas = await Canvas.create({
         userId,
         projectId,
         ...canvasData
@@ -56,7 +57,7 @@ class CanvasService {
 
   async updateCanvas(canvasId, updates) {
     try {
-      const canvas = await CanvasModel.findById(canvasId);
+      const canvas = await Canvas.findById(canvasId);
       if (!canvas) {
         throw new Error('Canvas not found');
       }
@@ -139,7 +140,7 @@ class CanvasService {
 
   async analyzeCanvas(canvasId) {
     try {
-      const canvas = await CanvasModel.findById(canvasId);
+      const canvas = await Canvas.findById(canvasId);
       if (!canvas) {
         throw new Error('Canvas not found');
       }
@@ -185,7 +186,7 @@ class CanvasService {
 
   async getCanvas(canvasId) {
     try {
-      const canvas = await CanvasModel.findById(canvasId);
+      const canvas = await Canvas.findById(canvasId);
       if (!canvas) {
         throw new Error('Canvas not found');
       }
@@ -198,7 +199,7 @@ class CanvasService {
 
   async deleteCanvas(canvasId) {
     try {
-      const result = await CanvasModel.findByIdAndDelete(canvasId);
+      const result = await Canvas.findByIdAndDelete(canvasId);
       if (!result) {
         throw new Error('Canvas not found');
       }
@@ -210,4 +211,4 @@ class CanvasService {
   }
 }
 
-module.exports = new CanvasService();
+export default new CanvasService();

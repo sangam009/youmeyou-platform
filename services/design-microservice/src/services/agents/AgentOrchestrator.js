@@ -1,11 +1,11 @@
-const { A2AClient } = require('@a2a-js/sdk');
-const { config } = require('../../../config');
-const logger = require('../../utils/logger');
-const ArchitectureDesignerAgent = require('./ArchitectureDesignerAgent');
-const DatabaseDesignerAgent = require('./DatabaseDesignerAgent');
-const APIDesignerAgent = require('./APIDesignerAgent');
-const SecurityAnalystAgent = require('./SecurityAnalystAgent');
-const CodeGeneratorAgent = require('./CodeGeneratorAgent');
+import { A2AClient } from '@a2a-js/sdk';
+import { config } from '../../../config/index.js';
+import logger from '../../utils/logger.js';
+import ArchitectureDesignerAgent from './ArchitectureDesignerAgent.js';
+import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
+import APIDesignerAgent from './APIDesignerAgent.js';
+import SecurityAnalystAgent from './SecurityAnalystAgent.js';
+import CodeGeneratorAgent from './CodeGeneratorAgent.js';
 
 class AgentOrchestrator {
   constructor() {
@@ -296,4 +296,4 @@ class AgentOrchestrator {
   }
 }
 
-module.exports = AgentOrchestrator;
+export default AgentOrchestrator;

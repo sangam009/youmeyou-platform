@@ -1,4 +1,4 @@
-const logger = require('../../utils/logger');
+import logger from '/app/src/utils/logger.js';
 
 class TechLeadAgent {
   constructor(a2aClient) {
@@ -206,4 +206,4 @@ class TechLeadAgent {
   }
 }
 
-module.exports = TechLeadAgent;
+export default TechLeadAgent;
