@@ -4,7 +4,7 @@ services:
   # Design Service MongoDB (Internal Only)
   design-mongodb:
     image: mongo:7
-    container_name: youmeyou-design-mongodb
+    container_name: design-mongodb
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: design_admin
@@ -12,7 +12,8 @@ services:
       MONGO_INITDB_DATABASE: design_service
     volumes:
       - design_mongodb_data:/data/db
-      - ./design-mongo-init:/docker-entrypoint-initdb.d
+      - design_mongodb_config:/data/configdb
+      - ./design-mongo-init:/docker-entrypoint-initdb.d:ro
     networks:
       - youmeyou-data
     healthcheck:
@@ -30,7 +31,7 @@ services:
   # Design Service Redis (Internal Only)
   design-redis:
     image: redis:7-alpine
-    container_name: youmeyou-design-redis
+    container_name: design-redis
     restart: unless-stopped
     command: redis-server --requirepass design_redis_2024!
     volumes:
@@ -92,8 +93,13 @@ services:
 volumes:
   design_mongodb_data:
     driver: local
+    name: design_mongodb_data  # Named volume to persist across deployments
+  design_mongodb_config:
+    driver: local
+    name: design_mongodb_config  # Named volume for MongoDB config
   design_redis_data:
     driver: local
+    name: design_redis_data  # Named volume for Redis data
 
 networks:
   youmeyou-data:

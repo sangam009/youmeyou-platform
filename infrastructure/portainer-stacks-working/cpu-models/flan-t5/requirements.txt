@@ -1,4 +1,7 @@
 flask==2.3.3
-transformers==4.21.0
-torch==2.0.1+cpu
-requests==2.31.0 
+transformers==4.35.2
+sentencepiece==0.1.99
+protobuf==4.24.4
+# Removed accelerate and safetensors to reduce size
+# accelerate==0.24.1
+# safetensors==0.4.0 

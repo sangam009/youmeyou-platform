@@ -1,36 +1,9 @@
-import api from './api';
+import { API_BASE_URL } from '../config';
 
-interface ArchitectureData {
-  systemPatterns: Array<{
-    id: string;
-    name: string;
-    type: string;
-    description: string;
-  }>;
-  componentRelationships: Array<{
-    sourceId: string;
-    targetId: string;
-    type: string;
-    description: string;
-  }>;
-  diagram: {
-    type: string;
-    diagram: string;
-  };
-  recommendations: {
-    scalability: Record<string, any>;
-    optimization: Record<string, any>;
-  };
-  lastUpdated: Date | null;
-}
-
-interface ArchitectureRequest {
-  projectType: string;
-  requirements: Record<string, any>;
-  constraints?: Record<string, any>;
-  existingComponents?: Array<any>;
-  scalabilityNeeds?: Record<string, any>;
-  clientId: string;
+export interface StreamingOptions {
+  maxReconnectAttempts?: number;
+  reconnectDelay?: number;
+  heartbeatInterval?: number;
 }
 
 export class StreamingConnection {
@@ -223,95 +196,9 @@ export class StreamingConnection {
   }
 }
 
-// Update the existing streaming functions to use the new StreamingConnection class
-export const startStreamingExecution = (executionId: string, options: StreamingOptions = {}): StreamingConnection => {
-  const connection = new StreamingConnection(`${API_BASE_URL}/streaming/execution/${executionId}`, options);
+// Helper functions to create streaming connections
+export const createStreamingConnection = (endpoint: string, options: StreamingOptions = {}): StreamingConnection => {
+  const connection = new StreamingConnection(`${API_BASE_URL}${endpoint}`, options);
   connection.connect();
   return connection;
-};
-
-export const startArchitectureDesign = (canvasId: string, options: StreamingOptions = {}): StreamingConnection => {
-  const connection = new StreamingConnection(`${API_BASE_URL}/streaming/architecture/${canvasId}`, options);
-  connection.connect();
-  return connection;
-};
-
-const canvasApi = {
-  // Get canvas by ID
-  async getCanvas(canvasId: string) {
-    const response = await api.get(`/api/canvas/${canvasId}`);
-    return response.data;
-  },
-
-  // Create new canvas
-  async createCanvas(projectId: string, data: any) {
-    const response = await api.post('/api/canvas', {
-      projectId,
-      ...data
-    });
-    return response.data;
-  },
-
-  // Update canvas
-  async updateCanvas(canvasId: string, data: any) {
-    const response = await api.put(`/api/canvas/${canvasId}`, data);
-    return response.data;
-  },
-
-  // Delete canvas
-  async deleteCanvas(canvasId: string) {
-    const response = await api.delete(`/api/canvas/${canvasId}`);
-    return response.data;
-  },
-
-  // Get project canvases
-  async getProjectCanvases(projectId: string) {
-    const response = await api.get(`/api/canvas/project/${projectId}`);
-    return response.data;
-  },
-
-  // Start streaming session
-  async startStreaming(task: string, clientId: string, projectId: string) {
-    const response = await api.post('/api/canvas/stream/start', {
-      task,
-      clientId,
-      projectId
-    });
-    return response.data;
-  },
-
-  // Start architecture design
-  startArchitectureDesign: async (request: ArchitectureRequest) => {
-    try {
-      const response = await api.post('/api/canvas/architecture', request);
-      return response.data;
-    } catch (error) {
-      console.error('Error starting architecture design:', error);
-      throw error;
-    }
-  },
-
-  // Get architecture by canvas ID
-  getArchitecture: async (canvasId: string): Promise<ArchitectureData | null> => {
-    try {
-      const response = await api.get(`/api/canvas/architecture/${canvasId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error getting architecture:', error);
-      throw error;
-    }
-  },
-
-  // Update architecture
-  updateArchitecture: async (canvasId: string, architectureData: Partial<ArchitectureData>) => {
-    try {
-      const response = await api.put(`/api/canvas/architecture/${canvasId}`, architectureData);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating architecture:', error);
-      throw error;
-    }
-  }
-};
-
-export default canvasApi; 
+}; 

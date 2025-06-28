@@ -92,6 +92,16 @@ class CanvasContentModel {
           viewCount: 0,
           editCount: 1
         },
+        architecture: {
+          systemPatterns: [],
+          componentRelationships: [],
+          diagram: null,
+          recommendations: {
+            scalability: {},
+            optimization: {}
+          },
+          lastUpdated: null
+        },
         created_at: new Date(),
         updated_at: new Date()
       };
@@ -443,6 +453,73 @@ class CanvasContentModel {
       }
     } catch (error) {
       logger.error('Error closing MongoDB connection:', error);
+    }
+  }
+
+  async updateArchitecture(canvasId, architectureData, userId) {
+    try {
+      const collection = this.db.collection('canvas_content');
+      
+      const updateFields = {
+        'architecture.systemPatterns': architectureData.systemPatterns,
+        'architecture.componentRelationships': architectureData.componentRelationships,
+        'architecture.diagram': architectureData.diagram,
+        'architecture.recommendations': architectureData.recommendations,
+        'architecture.lastUpdated': new Date(),
+        updated_at: new Date()
+      };
+
+      const result = await collection.updateOne(
+        { canvas_id: canvasId },
+        { 
+          $set: updateFields,
+          $inc: { 'analytics.editCount': 1 }
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return null;
+      }
+
+      // Create version for architecture update
+      const canvas = await collection.findOne({ canvas_id: canvasId });
+      const latestVersion = await this.getLatestVersion(canvasId);
+      const newVersion = latestVersion ? latestVersion.version + 1 : 1;
+      
+      await this.createVersion(
+        canvasId, 
+        canvas, 
+        newVersion, 
+        userId, 
+        'Architecture updated'
+      );
+
+      logger.info(`Architecture updated for canvas: ${canvasId}`);
+      
+      return await this.findByCanvasId(canvasId);
+    } catch (error) {
+      logger.error('Error updating architecture:', error);
+      throw error;
+    }
+  }
+
+  async getArchitecture(canvasId) {
+    try {
+      const collection = this.db.collection('canvas_content');
+      
+      const canvas = await collection.findOne(
+        { canvas_id: canvasId },
+        { projection: { architecture: 1 } }
+      );
+      
+      if (!canvas || !canvas.architecture) {
+        return null;
+      }
+
+      return canvas.architecture;
+    } catch (error) {
+      logger.error('Error getting architecture:', error);
+      throw error;
     }
   }
 }

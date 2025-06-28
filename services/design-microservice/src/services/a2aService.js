@@ -1,17 +1,36 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-// const { A2AClient } = require('@a2a-js/sdk'); // Will be uncommented when A2A SDK is available
+const { A2AClient } = require('@a2a-js/sdk');
 const logger = require('../utils/logger');
+const A2AAdapter = require('./agents/A2AAdapter');
+const ProjectManagerAgent = require('./agents/ProjectManagerAgent');
+const TechLeadAgent = require('./agents/TechLeadAgent');
+const AgentOrchestrator = require('./agents/AgentOrchestrator');
+const DynamicPromptingService = require('./DynamicPromptingService');
 
 class A2AService {
   constructor() {
     // Initialize Google Gemini AI
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || 'demo-key');
     
-    // Initialize A2A client (commented out until SDK is available)
-    // this.a2aClient = new A2AClient({
-    //   apiKey: process.env.A2A_API_KEY,
-    //   projectId: process.env.A2A_PROJECT_ID
-    // });
+    // Initialize new agent system
+    this.agentAdapter = new A2AAdapter();
+    
+    // Initialize A2A client with streaming support
+    this.a2aClient = new A2AClient({
+      apiKey: process.env.A2A_API_KEY,
+      projectId: process.env.A2A_PROJECT_ID,
+      baseUrl: process.env.A2A_BASE_URL || 'http://localhost:4001'
+    });
+    
+    // Initialize agent system
+    this.projectManager = new ProjectManagerAgent(this.a2aClient);
+    this.techLead = new TechLeadAgent(this.a2aClient);
+    this.orchestrator = new AgentOrchestrator(this.a2aClient);
+    
+    // Initialize Phase 3: Dynamic Prompting Service
+    this.dynamicPrompting = new DynamicPromptingService();
+    this.userProfiles = new Map();
+    this.projectContexts = new Map();
     
     this.agents = this.initializeAgents();
     this.skillRegistry = this.buildSkillRegistry();
@@ -169,6 +188,25 @@ class A2AService {
     try {
       logger.info(`Routing task: ${task.type} with content: ${task.content?.substring(0, 100)}...`);
       
+      // Use new agent system through adapter
+      const response = await this.agentAdapter.routeTask(task);
+      
+      // If the new system fails, fall back to old system
+      if (!response) {
+        logger.warn('New agent system failed, falling back to old system');
+        return this.legacyRouteTask(task);
+      }
+      
+      return response;
+    } catch (error) {
+      logger.error('Error routing task:', error);
+      // Fall back to old system on error
+      return this.legacyRouteTask(task);
+    }
+  }
+
+  async legacyRouteTask(task) {
+    try {
       // Analyze task to determine required skills
       const requiredSkills = await this.analyzeTaskSkills(task);
       
@@ -192,7 +230,7 @@ class A2AService {
         executedAt: new Date()
       };
     } catch (error) {
-      logger.error('Error routing task:', error);
+      logger.error('Error in legacy route task:', error);
       throw error;
     }
   }
@@ -295,8 +333,8 @@ class A2AService {
     try {
       const model = this.genAI.getGenerativeModel({ model: agent.model });
       
-      // Build comprehensive prompt with context and action capabilities
-      const prompt = this.buildEnhancedPrompt(agent, task);
+      // Build comprehensive prompt with dynamic prompting
+      const prompt = await this.buildEnhancedPrompt(agent, task);
       
       logger.info(`Executing task with agent ${agent.name}`);
       
@@ -319,7 +357,39 @@ class A2AService {
     }
   }
 
-  buildEnhancedPrompt(agent, task) {
+  async buildEnhancedPrompt(agent, task, options = {}) {
+    try {
+      // Get user profile and project context
+      const userId = task.userId || 'default';
+      const projectId = task.projectId || 'default';
+      
+      const userProfile = this.getUserProfile(userId);
+      const projectContext = this.getProjectContext(projectId, task.canvasState);
+      
+      // Use dynamic prompting service for intelligent prompt generation
+      const dynamicPrompt = await this.dynamicPrompting.generateContextAwarePrompt(
+        agent,
+        task,
+        userProfile,
+        projectContext
+      );
+      
+      if (dynamicPrompt) {
+        logger.info(`Generated dynamic prompt for agent ${agent.name}, task ${task.type}`);
+        return dynamicPrompt;
+      }
+      
+      // Fallback to enhanced static prompt if dynamic fails
+      logger.warn('Dynamic prompting failed, using enhanced static prompt');
+      return this.buildStaticEnhancedPrompt(agent, task);
+      
+    } catch (error) {
+      logger.error('Error building enhanced prompt:', error);
+      return this.buildStaticEnhancedPrompt(agent, task);
+    }
+  }
+
+  buildStaticEnhancedPrompt(agent, task) {
     const context = this.buildSimpleContextFromCanvas(task.canvasState);
     const componentInfo = this.extractComponentInfo(task.component);
     
@@ -1172,6 +1242,362 @@ Respond in a clear, actionable format that helps the user improve their system d
     
     return Math.max(0, Math.min(100, score));
   }
+
+  async executeWithStreaming(task, streamCallback) {
+    try {
+      // 1. Project Manager Analysis
+      const executionPlan = await this.projectManager.analyzeTask(task);
+      streamCallback({
+        type: 'plan',
+        data: executionPlan,
+        timestamp: Date.now()
+      });
+
+      // 2. Tech Lead Validation
+      const validationQuestions = await this.techLead.validateAndQuestion(executionPlan);
+      if (validationQuestions.length > 0) {
+        streamCallback({
+          type: 'questions',
+          data: validationQuestions,
+          timestamp: Date.now()
+        });
+        // Wait for user responses here
+      }
+
+      // 3. Start Execution Stream
+      const stream = await this.orchestrator.executeWithStream(executionPlan);
+      
+      // 4. Process Stream Events
+      for await (const event of stream) {
+        if (event.kind === 'status-update') {
+          streamCallback({
+            type: 'status',
+            data: event.status,
+            timestamp: Date.now()
+          });
+        } else if (event.kind === 'artifact-update') {
+          streamCallback({
+            type: 'artifact',
+            data: event.artifact,
+            timestamp: Date.now()
+          });
+        } else if (event.kind === 'completion') {
+          streamCallback({
+            type: 'complete',
+            data: event.result,
+            timestamp: Date.now()
+          });
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Error in A2A streaming execution:', error);
+      streamCallback({
+        type: 'error',
+        error: error.message,
+        timestamp: Date.now()
+      });
+      throw error;
+    }
+  }
+
+  async generateDynamicPrompt(context, type) {
+    const promptTemplate = await this.projectManager.getPromptTemplate(type);
+    return this.techLead.enhancePrompt(promptTemplate, context);
+  }
+
+  // Phase 3: Dynamic Prompting Helper Methods
+
+  /**
+   * Get or create user profile for dynamic prompting
+   */
+  getUserProfile(userId) {
+    if (!this.userProfiles.has(userId)) {
+      // Create default user profile
+      this.userProfiles.set(userId, {
+        id: userId,
+        experienceLevel: 'intermediate',
+        preferences: {
+          codeStyle: 'modern',
+          architecture: 'microservices',
+          testing: 'comprehensive'
+        },
+        successfulPatterns: [
+          'step-by-step implementation',
+          'clear documentation',
+          'modular architecture'
+        ],
+        projectHistory: [],
+        skillAreas: ['fullstack', 'web-development'],
+        communicationStyle: 'detailed'
+      });
+    }
+    return this.userProfiles.get(userId);
+  }
+
+  /**
+   * Update user profile based on interactions
+   */
+  updateUserProfile(userId, updates) {
+    const profile = this.getUserProfile(userId);
+    Object.assign(profile, updates);
+    this.userProfiles.set(userId, profile);
+    logger.info(`Updated user profile for ${userId}`);
+  }
+
+  /**
+   * Get or create project context for dynamic prompting
+   */
+  getProjectContext(projectId, canvasState) {
+    if (!this.projectContexts.has(projectId)) {
+      // Create context from canvas state
+      const context = this.buildProjectContextFromCanvas(projectId, canvasState);
+      this.projectContexts.set(projectId, context);
+    }
+    return this.projectContexts.get(projectId);
+  }
+
+  /**
+   * Build project context from canvas state
+   */
+  buildProjectContextFromCanvas(projectId, canvasState) {
+    if (!canvasState || !canvasState.nodes) {
+      return {
+        id: projectId,
+        type: 'web-application',
+        architecture: 'microservices',
+        technologies: [],
+        patterns: [],
+        constraints: [],
+        performanceRequirements: 'standard',
+        securityLevel: 'standard'
+      };
+    }
+
+    const nodes = canvasState.nodes || [];
+    const edges = canvasState.edges || [];
+
+    // Analyze architecture pattern
+    const architectureType = this.detectArchitecturePattern(nodes);
+    
+    // Extract technologies from components
+    const technologies = this.extractTechnologies(nodes);
+    
+    // Identify patterns
+    const patterns = this.identifyArchitecturalPatterns(nodes, edges);
+    
+    return {
+      id: projectId,
+      type: this.detectProjectType(nodes),
+      architecture: architectureType,
+      technologies,
+      patterns,
+      constraints: this.identifyConstraints(nodes, edges),
+      performanceRequirements: this.assessPerformanceNeeds(nodes, edges),
+      securityLevel: this.assessSecurityLevel(nodes, edges),
+      complexity: this.calculateComplexityScore(nodes, edges),
+      componentCount: nodes.length,
+      integrationPoints: edges.length
+    };
+  }
+
+  /**
+   * Extract technologies from canvas nodes
+   */
+  extractTechnologies(nodes) {
+    const technologies = new Set();
+    
+    nodes.forEach(node => {
+      const data = node.data || {};
+      
+      // Extract from service type
+      if (data.serviceType) {
+        technologies.add(data.serviceType);
+      }
+      
+      // Extract from properties
+      if (data.properties) {
+        Object.values(data.properties).forEach(prop => {
+          if (typeof prop === 'string' && prop.includes('.')) {
+            technologies.add(prop);
+          }
+        });
+      }
+      
+      // Extract common technology indicators
+      const label = (data.label || '').toLowerCase();
+      if (label.includes('react')) technologies.add('React');
+      if (label.includes('node')) technologies.add('Node.js');
+      if (label.includes('postgres')) technologies.add('PostgreSQL');
+      if (label.includes('mongo')) technologies.add('MongoDB');
+      if (label.includes('redis')) technologies.add('Redis');
+      if (label.includes('docker')) technologies.add('Docker');
+    });
+    
+    return Array.from(technologies);
+  }
+
+  /**
+   * Identify architectural patterns from canvas
+   */
+  identifyArchitecturalPatterns(nodes, edges) {
+    const patterns = [];
+    
+    // Check for common patterns
+    const hasLoadBalancer = nodes.some(n => n.data?.serviceType === 'loadbalancer');
+    const hasAPIGateway = nodes.some(n => n.data?.serviceType === 'api-gateway');
+    const hasDatabase = nodes.some(n => n.data?.serviceType === 'database');
+    const hasCaching = nodes.some(n => n.data?.serviceType === 'cache');
+    
+    if (hasLoadBalancer) patterns.push('load-balancing');
+    if (hasAPIGateway) patterns.push('api-gateway');
+    if (hasDatabase) patterns.push('data-persistence');
+    if (hasCaching) patterns.push('caching');
+    
+    // Check for microservices pattern
+    const serviceCount = nodes.filter(n => n.data?.serviceType === 'microservice').length;
+    if (serviceCount > 2) patterns.push('microservices');
+    
+    return patterns;
+  }
+
+  /**
+   * Detect project type from components
+   */
+  detectProjectType(nodes) {
+    const hasWebComponents = nodes.some(n => {
+      const type = n.data?.serviceType;
+      return type === 'frontend' || type === 'web-app';
+    });
+    
+    const hasAPIComponents = nodes.some(n => {
+      const type = n.data?.serviceType;
+      return type === 'api' || type === 'backend';
+    });
+    
+    const hasMobileComponents = nodes.some(n => {
+      const type = n.data?.serviceType;
+      return type === 'mobile' || type === 'mobile-app';
+    });
+    
+    if (hasWebComponents && hasAPIComponents) return 'full-stack-web';
+    if (hasWebComponents) return 'frontend-web';
+    if (hasAPIComponents) return 'backend-api';
+    if (hasMobileComponents) return 'mobile-application';
+    
+    return 'web-application';
+  }
+
+  /**
+   * Identify system constraints
+   */
+  identifyConstraints(nodes, edges) {
+    const constraints = [];
+    
+    // Performance constraints
+    if (nodes.length > 10) constraints.push('high-scale-system');
+    if (edges.length > 15) constraints.push('complex-integrations');
+    
+    // Security constraints
+    const hasAuthComponents = nodes.some(n => 
+      n.data?.serviceType === 'auth' || 
+      n.data?.label?.toLowerCase().includes('auth')
+    );
+    if (hasAuthComponents) constraints.push('security-critical');
+    
+    return constraints;
+  }
+
+  /**
+   * Assess performance requirements
+   */
+  assessPerformanceNeeds(nodes, edges) {
+    const nodeCount = nodes.length;
+    const edgeCount = edges.length;
+    
+    if (nodeCount > 15 || edgeCount > 20) return 'high-performance';
+    if (nodeCount > 8 || edgeCount > 10) return 'standard-performance';
+    return 'basic-performance';
+  }
+
+  /**
+   * Assess security level requirements
+   */
+  assessSecurityLevel(nodes, edges) {
+    const hasAuthComponents = nodes.some(n => 
+      n.data?.serviceType === 'auth' ||
+      n.data?.label?.toLowerCase().includes('auth') ||
+      n.data?.label?.toLowerCase().includes('security')
+    );
+    
+    const hasPaymentComponents = nodes.some(n =>
+      n.data?.label?.toLowerCase().includes('payment') ||
+      n.data?.label?.toLowerCase().includes('billing')
+    );
+    
+    if (hasPaymentComponents) return 'high-security';
+    if (hasAuthComponents) return 'standard-security';
+    return 'basic-security';
+  }
+
+  /**
+   * Generate inter-agent collaboration prompt
+   */
+  async generateInterAgentPrompt(sourceAgent, targetAgent, task, sharedContext) {
+    return await this.dynamicPrompting.generateInterAgentPrompt(
+      sourceAgent,
+      targetAgent,
+      task,
+      sharedContext
+    );
+  }
+
+  /**
+   * Generate user interaction prompt for clarifications
+   */
+  async generateUserInteractionPrompt(task, currentUnderstanding, missingInfo) {
+    return await this.dynamicPrompting.generateUserInteractionPrompt(
+      task,
+      currentUnderstanding,
+      missingInfo
+    );
+  }
+
+  /**
+   * Generate error handling prompt
+   */
+  async generateErrorHandlingPrompt(errorType, errorContext, failurePoint, fallbackOptions) {
+    return await this.dynamicPrompting.generateErrorHandlingPrompt(
+      errorType,
+      errorContext,
+      failurePoint,
+      fallbackOptions
+    );
+  }
+
+  /**
+   * Generate validation prompt
+   */
+  async generateValidationPrompt(requestingAgent, validationTarget, criteria, previousContext) {
+    return await this.dynamicPrompting.generateValidationPrompt(
+      requestingAgent,
+      validationTarget,
+      criteria,
+      previousContext
+    );
+  }
+
+  /**
+   * Get dynamic prompting statistics
+   */
+  getDynamicPromptingStats() {
+    return {
+      service: this.dynamicPrompting.getOptimizationStats(),
+      userProfiles: this.userProfiles.size,
+      projectContexts: this.projectContexts.size
+    };
+  }
 }
 
-module.exports = new A2AService(); 
+module.exports = new A2AService();
