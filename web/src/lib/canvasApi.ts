@@ -1,4 +1,43 @@
-import api from './api';
+import axios from 'axios';
+import { A2AStreamingService } from './a2aStreaming';
+
+// Determine the base URL based on the current hostname
+const getBaseUrl = () => {
+  if (typeof window === 'undefined') return process.env.NEXT_PUBLIC_DESIGN_SERVICE_URL || 'https://youmeyou.ai';
+  
+  const hostname = window.location.hostname;
+  if (hostname.includes('staging')) {
+    return 'https://staging.youmeyou.ai';
+  }
+  if (hostname.includes('localhost')) {
+    return 'http://localhost:4000'; // Direct design service for local dev
+  }
+  return 'https://youmeyou.ai';
+};
+
+// Helper function to get the correct endpoint path
+const getEndpoint = (path: string) => {
+  if (typeof window === 'undefined') return path;
+  
+  const hostname = window.location.hostname;
+  if (hostname.includes('localhost')) {
+    return path; // Direct service access in local dev
+  }
+  return `/api/design${path}`; // Through nginx proxy in production/staging
+};
+
+const api = axios.create({
+  baseURL: getBaseUrl(),
+  withCredentials: true,
+});
+
+interface StreamingOptions {
+  onProgress?: (progress: number) => void;
+  onError?: (error: any) => void;
+  onComplete?: (result: any) => void;
+  onCanvasUpdate?: (canvasData: any) => void;
+  onCodeUpdate?: (codeData: any) => void;
+}
 
 interface ArchitectureData {
   systemPatterns: Array<{
@@ -33,219 +72,32 @@ interface ArchitectureRequest {
   clientId: string;
 }
 
-export class StreamingConnection {
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000; // Start with 1 second
-  private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
-  private connectionState: 'connecting' | 'connected' | 'disconnected' | 'failed' = 'disconnected';
-  private messageQueue: any[] = [];
-  private lastEventId: string | null = null;
+// Initialize A2A streaming service
+const streamingService = new A2AStreamingService();
 
-  constructor(private url: string, private options: StreamingOptions = {}) {
-    this.maxReconnectAttempts = options.maxReconnectAttempts || 5;
-    this.setupHeartbeat();
-  }
-
-  private setupHeartbeat() {
-    setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'heartbeat' }));
-      }
-    }, 30000); // Send heartbeat every 30 seconds
-  }
-
-  connect() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      return;
-    }
-
-    this.connectionState = 'connecting';
-    
-    try {
-      this.ws = new WebSocket(this.url);
-      
-      this.ws.onopen = () => {
-        this.connectionState = 'connected';
-        this.reconnectAttempts = 0;
-        this.reconnectDelay = 1000;
-        this.emit('connected', null);
-        
-        // Replay queued messages
-        while (this.messageQueue.length > 0) {
-          const msg = this.messageQueue.shift();
-          this.ws?.send(JSON.stringify(msg));
-        }
-        
-        // Request missed events if we have a last event ID
-        if (this.lastEventId) {
-          this.ws.send(JSON.stringify({
-            type: 'recover',
-            lastEventId: this.lastEventId
-          }));
-        }
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Update last event ID for recovery
-          if (data.eventId) {
-            this.lastEventId = data.eventId;
-          }
-          
-          // Handle different message types
-          switch (data.type) {
-            case 'error':
-              this.handleError(data);
-              break;
-            case 'heartbeat':
-              // Heartbeat received, connection is alive
-              break;
-            default:
-              this.emit('message', data);
-          }
-        } catch (error) {
-          console.error('Error parsing message:', error);
-          this.emit('error', { error: 'Failed to parse message' });
-        }
-      };
-
-      this.ws.onclose = (event) => {
-        this.handleDisconnect(event);
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.emit('error', { error: 'WebSocket error occurred' });
-        
-        // Close the connection to trigger reconnect
-        this.ws?.close();
-      };
-    } catch (error) {
-      console.error('Failed to establish WebSocket connection:', error);
-      this.handleDisconnect();
-    }
-  }
-
-  private handleDisconnect(event?: CloseEvent) {
-    this.connectionState = 'disconnected';
-    this.emit('disconnected', null);
-    
-    // Attempt to reconnect if not explicitly closed
-    if (event?.code !== 1000) {
-      this.attemptReconnect();
-    }
-  }
-
-  private async attemptReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.connectionState = 'failed';
-      this.emit('failed', { error: 'Max reconnection attempts reached' });
-      return;
-    }
-
-    this.reconnectAttempts++;
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000); // Max 30 seconds
-
-    console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-    
-    await new Promise(resolve => setTimeout(resolve, this.reconnectDelay));
-    this.connect();
-  }
-
-  private handleError(data: any) {
-    switch (data.code) {
-      case 'AUTHENTICATION_FAILED':
-        // Handle authentication errors
-        this.emit('authError', data);
-        break;
-      case 'RATE_LIMIT_EXCEEDED':
-        // Handle rate limiting
-        this.emit('rateLimitError', data);
-        setTimeout(() => this.connect(), data.retryAfter || 5000);
-        break;
-      case 'INVALID_MESSAGE':
-        // Handle invalid message format
-        this.emit('error', data);
-        break;
-      default:
-        this.emit('error', data);
-    }
-  }
-
-  send(message: any) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    } else {
-      // Queue message if not connected
-      this.messageQueue.push(message);
-      
-      // Attempt to connect if disconnected
-      if (this.connectionState === 'disconnected') {
-        this.connect();
-      }
-    }
-  }
-
-  on(event: string, handler: (data: any) => void) {
-    if (!this.eventHandlers.has(event)) {
-      this.eventHandlers.set(event, []);
-    }
-    this.eventHandlers.get(event)?.push(handler);
-  }
-
-  off(event: string, handler: (data: any) => void) {
-    const handlers = this.eventHandlers.get(event);
-    if (handlers) {
-      const index = handlers.indexOf(handler);
-      if (index !== -1) {
-        handlers.splice(index, 1);
-      }
-    }
-  }
-
-  private emit(event: string, data: any) {
-    const handlers = this.eventHandlers.get(event);
-    if (handlers) {
-      handlers.forEach(handler => handler(data));
-    }
-  }
-
-  disconnect() {
-    if (this.ws) {
-      this.ws.close(1000); // Normal closure
-      this.ws = null;
-    }
-    this.connectionState = 'disconnected';
-  }
-}
-
-// Update the existing streaming functions to use the new StreamingConnection class
-export const startStreamingExecution = (executionId: string, options: StreamingOptions = {}): StreamingConnection => {
-  const connection = new StreamingConnection(`${API_BASE_URL}/streaming/execution/${executionId}`, options);
-  connection.connect();
-  return connection;
+// Replace WebSocket streaming with A2A SDK streaming
+export const startStreamingExecution = (executionId: string, options: StreamingOptions = {}) => {
+  return streamingService.startStreamingExecution({
+    id: executionId,
+    prompt: 'Execute streaming task',
+    type: 'EXECUTION'
+  }, options);
 };
 
-export const startArchitectureDesign = (canvasId: string, options: StreamingOptions = {}): StreamingConnection => {
-  const connection = new StreamingConnection(`${API_BASE_URL}/streaming/architecture/${canvasId}`, options);
-  connection.connect();
-  return connection;
+export const startArchitectureDesign = (canvasId: string, requirements: string, options: StreamingOptions = {}) => {
+  return streamingService.startArchitectureDesign(canvasId, requirements, options);
 };
 
 const canvasApi = {
   // Get canvas by ID
   async getCanvas(canvasId: string) {
-    const response = await api.get(`/api/canvas/${canvasId}`);
+    const response = await api.get(getEndpoint(`/canvas/${canvasId}`));
     return response.data;
   },
 
   // Create new canvas
   async createCanvas(projectId: string, data: any) {
-    const response = await api.post('/api/canvas', {
+    const response = await api.post(getEndpoint('/canvas'), {
       projectId,
       ...data
     });
@@ -254,37 +106,40 @@ const canvasApi = {
 
   // Update canvas
   async updateCanvas(canvasId: string, data: any) {
-    const response = await api.put(`/api/canvas/${canvasId}`, data);
+    const response = await api.put(getEndpoint(`/canvas/${canvasId}`), data);
     return response.data;
   },
 
   // Delete canvas
   async deleteCanvas(canvasId: string) {
-    const response = await api.delete(`/api/canvas/${canvasId}`);
+    const response = await api.delete(getEndpoint(`/canvas/${canvasId}`));
     return response.data;
   },
 
   // Get project canvases
   async getProjectCanvases(projectId: string) {
-    const response = await api.get(`/api/canvas/project/${projectId}`);
+    const response = await api.get(getEndpoint(`/canvas/project/${projectId}`));
     return response.data;
   },
 
-  // Start streaming session
+  // Start streaming session using A2A SDK
   async startStreaming(task: string, clientId: string, projectId: string) {
-    const response = await api.post('/api/canvas/stream/start', {
-      task,
-      clientId,
-      projectId
+    return streamingService.startStreamingExecution({
+      id: `${projectId}-${clientId}`,
+      prompt: task,
+      type: 'STREAMING_SESSION',
+      projectId,
+      clientId
     });
-    return response.data;
   },
 
-  // Start architecture design
+  // Start architecture design using A2A SDK
   startArchitectureDesign: async (request: ArchitectureRequest) => {
     try {
-      const response = await api.post('/api/canvas/architecture', request);
-      return response.data;
+      return streamingService.startArchitectureDesign(
+        request.clientId, 
+        `Design architecture for ${request.projectType}: ${JSON.stringify(request.requirements)}`
+      );
     } catch (error) {
       console.error('Error starting architecture design:', error);
       throw error;
@@ -294,7 +149,7 @@ const canvasApi = {
   // Get architecture by canvas ID
   getArchitecture: async (canvasId: string): Promise<ArchitectureData | null> => {
     try {
-      const response = await api.get(`/api/canvas/architecture/${canvasId}`);
+      const response = await api.get(getEndpoint(`/canvas/architecture/${canvasId}`));
       return response.data;
     } catch (error) {
       console.error('Error getting architecture:', error);
@@ -305,7 +160,7 @@ const canvasApi = {
   // Update architecture
   updateArchitecture: async (canvasId: string, architectureData: Partial<ArchitectureData>) => {
     try {
-      const response = await api.put(`/api/canvas/architecture/${canvasId}`, architectureData);
+      const response = await api.put(getEndpoint(`/canvas/architecture/${canvasId}`), architectureData);
       return response.data;
     } catch (error) {
       console.error('Error updating architecture:', error);

@@ -124,7 +124,8 @@ const DESIGN_AGENT_CARD = {
       outputModes: ['text/plain', 'application/json']
     }
   ],
-  supportsAuthenticatedExtendedCard: false
+  supportsAuthenticatedExtendedCard: true,
+  authenticationRequired: config.environment === 'production'
 };
 
 // Serve the A2A Agent Card at the well-known location
@@ -145,7 +146,15 @@ const requestHandler = new DefaultRequestHandler(
 
 // Setup A2A routes using the SDK
 const a2aApp = new A2AExpressApp(requestHandler);
-a2aApp.setupRoutes(app, '/a2a');
+
+// Add optional authentication for A2A routes in production
+if (config.environment === 'production') {
+  logger.info('🔒 Adding authentication to A2A routes in production');
+  a2aApp.setupRoutes(app, '/a2a', authMiddleware);
+} else {
+  logger.info('🔓 A2A routes running without authentication in development');
+  a2aApp.setupRoutes(app, '/a2a');
+}
 
 logger.info('🚀 A2A Server routes configured');
 
@@ -156,6 +165,14 @@ app.use('/api/canvas', authMiddleware, canvasRoutes);
 app.use('/api/agents', authMiddleware, agentRoutes);
 app.use('/api/templates', authMiddleware, templateRoutes);
 app.use('/api/dynamic-prompting', authMiddleware, dynamicPromptingRoutes);
+
+// Routes for nginx proxy (without /api prefix)
+app.use('/workspaces', authMiddleware, workspaceRoutes);
+app.use('/projects', authMiddleware, projectRoutes);
+app.use('/canvas', authMiddleware, canvasRoutes);
+app.use('/agents', authMiddleware, agentRoutes);
+app.use('/templates', authMiddleware, templateRoutes);
+app.use('/dynamic-prompting', authMiddleware, dynamicPromptingRoutes);
 
 // Error handling middleware
 app.use((error, req, res, next) => {
