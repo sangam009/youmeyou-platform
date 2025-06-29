@@ -311,6 +311,29 @@ class DatabaseDesignerAgent {
     }
     return strategy;
   }
+
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('🗄️ DatabaseDesigner executing task:', userQuery.substring(0, 100));
+      
+      // For now, provide a simple response while the full A2A integration is being set up
+      const response = {
+        content: `As your Database Designer, I can help you design efficient database schemas. For "${userQuery.substring(0, 50)}...", I recommend considering data relationships, indexing strategies, and scalability requirements.`,
+        suggestions: [
+          'Design entity relationships',
+          'Optimize query performance',
+          'Plan indexing strategy',
+          'Consider data normalization'
+        ],
+        analysis: 'Database design analysis provided'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ DatabaseDesigner execution error:', error);
+      throw error;
+    }
+  }
 }
 
 export default DatabaseDesignerAgent;

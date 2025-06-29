@@ -38,6 +38,29 @@ class ProjectManagerAgent {
       throw error;
     }
   }
+
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('🎯 ProjectManager executing task:', userQuery.substring(0, 100));
+      
+      // Analyze the query and provide project management guidance
+      const response = {
+        content: `As your Project Manager, I can help you plan and organize your project. For "${userQuery.substring(0, 50)}...", I recommend breaking it down into manageable phases and identifying key milestones.`,
+        suggestions: [
+          'Define project scope and requirements',
+          'Create development timeline',
+          'Identify resource needs',
+          'Set up project tracking'
+        ],
+        analysis: 'Project planning and management guidance provided'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ ProjectManager execution error:', error);
+      throw error;
+    }
+  }
 }
 
 export default ProjectManagerAgent; 

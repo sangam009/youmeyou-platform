@@ -245,6 +245,29 @@ class CodeGeneratorAgent {
     });
     return response.validation;
   }
+
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('💻 CodeGenerator executing task:', userQuery.substring(0, 100));
+      
+      // For now, provide a simple response while the full A2A integration is being set up
+      const response = {
+        content: `As your Code Generator, I can help you create clean, efficient code. For "${userQuery.substring(0, 50)}...", I'll focus on implementing best practices, proper error handling, and comprehensive testing.`,
+        suggestions: [
+          'Generate clean implementation',
+          'Create unit tests',
+          'Add error handling',
+          'Optimize performance'
+        ],
+        analysis: 'Code generation analysis provided'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ CodeGenerator execution error:', error);
+      throw error;
+    }
+  }
 }
 
 export default CodeGeneratorAgent;

@@ -231,6 +231,29 @@ class APIDesignerAgent {
     }
     return sdk;
   }
+
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('🔌 APIDesigner executing task:', userQuery.substring(0, 100));
+      
+      // For now, provide a simple response while the full A2A integration is being set up
+      const response = {
+        content: `As your API Designer, I can help you design robust and scalable APIs. For "${userQuery.substring(0, 50)}...", I recommend following RESTful principles, implementing proper authentication, and ensuring comprehensive documentation.`,
+        suggestions: [
+          'Design RESTful endpoints',
+          'Implement authentication flow',
+          'Create API documentation',
+          'Plan testing strategy'
+        ],
+        analysis: 'API design analysis provided'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ APIDesigner execution error:', error);
+      throw error;
+    }
+  }
 }
 
 export default APIDesignerAgent;

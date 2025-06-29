@@ -228,6 +228,29 @@ class TechLeadAgent {
     }
     return null;
   }
+
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('👨‍💼 TechLead executing task:', userQuery.substring(0, 100));
+      
+      // For now, provide a simple response while the full A2A integration is being set up
+      const response = {
+        content: `As your Tech Lead, I provide technical guidance and oversight. For "${userQuery.substring(0, 50)}...", I'll focus on architectural decisions, code quality, team coordination, and best practices implementation.`,
+        suggestions: [
+          'Review architectural decisions',
+          'Ensure code quality standards',
+          'Coordinate team efforts',
+          'Implement best practices'
+        ],
+        analysis: 'Technical leadership analysis provided'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ TechLead execution error:', error);
+      throw error;
+    }
+  }
 }
 
 export default TechLeadAgent;
