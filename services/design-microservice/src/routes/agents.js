@@ -12,13 +12,13 @@ router.post('/task', agentController.routeTask);
 router.post('/chat', agentController.chat);
 router.post('/generate', agentController.generateCode);
 router.post('/analyze', agentController.analyzeCode);
-router.get('/status', agentController.getAgents);
+router.get('/status', agentController.getAgentStatus);
 
 // Legacy endpoint (keeping for backward compatibility)
 router.post('/ask', agentController.askAgent);
 
 // Canvas analysis and suggestions
-router.post('/analyze', agentController.analyzeCanvas);
+router.post('/analyze-canvas', agentController.analyzeCanvas);
 router.post('/suggest', agentController.suggestImprovements);
 router.post('/validate', agentController.validateArchitecture);
 router.post('/document', agentController.generateDocumentation);
@@ -29,5 +29,6 @@ router.post('/collaborate', agentController.collaborateAgents);
 // Agent management
 router.get('/capabilities/:agentId?', agentController.getAgentCapabilities);
 router.get('/health', agentController.healthCheck);
+router.get('/list', agentController.getAgents);
 
 export default router; 

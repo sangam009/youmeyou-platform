@@ -72,8 +72,52 @@ interface ArchitectureRequest {
   clientId: string;
 }
 
+interface AgentRequest {
+  content: string;
+  canvasState?: any;
+  agentId?: string;
+  component?: any;
+}
+
 // Initialize A2A streaming service
 const streamingService = new A2AStreamingService();
+
+// Agent functions
+export const askAgent = async (request: AgentRequest) => {
+  try {
+    console.log('🤖 Sending request to agent:', request);
+    const response = await api.post(getEndpoint('/agents/ask'), request);
+    console.log('✅ Agent response received:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error asking agent:', error);
+    throw error;
+  }
+};
+
+export const getAgentStatus = async () => {
+  try {
+    const response = await api.get(getEndpoint('/agents/status'));
+    return response.data;
+  } catch (error) {
+    console.error('Error getting agent status:', error);
+    throw error;
+  }
+};
+
+export const chatWithAgent = async (message: string, canvasState?: any, component?: any) => {
+  try {
+    const response = await api.post(getEndpoint('/agents/chat'), {
+      message,
+      canvasState,
+      component
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error chatting with agent:', error);
+    throw error;
+  }
+};
 
 // Replace WebSocket streaming with A2A SDK streaming
 export const startStreamingExecution = (executionId: string, options: StreamingOptions = {}) => {

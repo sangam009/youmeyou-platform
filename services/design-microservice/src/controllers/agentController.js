@@ -44,17 +44,24 @@ class AgentController {
 
   async askAgent(req, res) {
     try {
+      logger.info('🤖 askAgent endpoint called', {
+        body: req.body,
+        user: req.user?.userId,
+        headers: req.headers['content-type']
+      });
+
       const { content, canvasState, agentId } = req.body;
       const userId = req.user?.userId || 'dummy-user-id';
       
       if (!content) {
+        logger.error('❌ Missing content in askAgent request');
         return res.status(400).json({
           status: 'error',
           message: 'Content is required'
         });
       }
       
-      logger.info(`Agent request from user ${userId}: ${content.substring(0, 100)}...`);
+      logger.info(`🔍 Processing agent request from user ${userId}: ${content.substring(0, 100)}...`);
       
       const task = {
         type: 'chat',
@@ -65,17 +72,33 @@ class AgentController {
         timestamp: new Date()
       };
       
+      logger.info('📤 Sending task to a2aService:', {
+        taskType: task.type,
+        hasCanvasState: !!task.canvasState,
+        agentId: task.agentId
+      });
+
       const response = await a2aService.routeTask(task);
+      
+      logger.info('📥 Received response from a2aService:', {
+        hasResponse: !!response,
+        responseType: typeof response
+      });
       
       res.json({
         status: 'success',
         data: response
       });
     } catch (error) {
-      logger.error('Error in askAgent:', error);
+      logger.error('❌ Error in askAgent:', {
+        error: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       res.status(500).json({
         status: 'error',
-        message: 'Failed to process agent request'
+        message: 'Failed to process agent request',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
