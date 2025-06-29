@@ -49,7 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           phoneNumber: firebaseUser.phoneNumber,
         },
       });
-      setUserProfile(response.user);
+      
+      // response.user is the UUID string, so we need to fetch the full user profile
+      if (response.user) {
+        const userProfileResponse = await authApi.getUser(response.user);
+        setUserProfile(userProfileResponse.user);
+      }
     } catch (error) {
       console.error('Error creating/updating user profile:', error);
       throw error;
@@ -127,10 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
       console.log('[Codaloo][Google SignIn] Auth microservice response:', response);
-      console.log('[Codaloo][Google SignIn] Refetching user profile from auth service...');
-       
-      const fetchedProfile = await authApi.getUser(response.user);
-      setUserProfile(fetchedProfile.user); 
+      
+      // response.user is the UUID string, so we need to fetch the full user profile
+      if (response.user) {
+        console.log('[Codaloo][Google SignIn] Fetching user profile with UUID:', response.user);
+        const userProfileResponse = await authApi.getUser(response.user);
+        console.log('[Codaloo][Google SignIn] User profile response:', userProfileResponse);
+        setUserProfile(userProfileResponse.user);
+      }
     } catch (error) {
       console.error('[Codaloo][Google SignIn] Error:', error);
       throw error;

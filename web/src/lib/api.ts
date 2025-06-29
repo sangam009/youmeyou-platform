@@ -61,10 +61,10 @@ export const authApi = {
     const response = await api.post(endpoint, { provider, payload: data });
     return response.data;
   },
-  getUser: async (user: UserProfile) => {
+  getUser: async (uuid: string) => {
     const endpoint = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
-      ? `/user/${user.uid}` 
-      : `/api/auth/user/${user.uid}`;
+      ? `/user/${uuid}` 
+      : `/api/auth/user/${uuid}`;
     const response = await api.get(endpoint);
     return response.data;
   },
