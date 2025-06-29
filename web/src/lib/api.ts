@@ -26,7 +26,8 @@ const api = axios.create({
   baseURL: getBaseUrl(),
   withCredentials: true, // Important for session cookies
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
   }
 });
 
@@ -36,17 +37,40 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // Ensure credentials are always sent
+  config.withCredentials = true;
+  
+  // Add CSRF protection if needed
+  const csrfToken = document.cookie.split('; ').find(row => row.startsWith('XSRF-TOKEN'))?.split('=')[1];
+  if (csrfToken) {
+    config.headers['X-XSRF-TOKEN'] = csrfToken;
+  }
+  
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 // Add response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Handle Set-Cookie headers if present
+    const setCookie = response.headers['set-cookie'];
+    if (setCookie) {
+      // The browser will automatically handle the cookie
+      console.log('Received new cookies from server');
+    }
+    return response;
+  },
   async (error) => {
     if (error.response?.status === 401) {
       // Handle unauthorized access
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Only redirect if we're in a browser context
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -80,6 +104,7 @@ export const authApi = {
       ? '/session/logout' 
       : '/api/auth/session/logout';
     const response = await api.post(endpoint);
+    localStorage.removeItem('token');
     return response.data;
   }
 };

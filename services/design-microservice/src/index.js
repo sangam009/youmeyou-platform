@@ -28,11 +28,22 @@ const corsOptions = {
   origin: config.cors.origins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Cookie',
+    'Set-Cookie',
+    'Origin',
+    'Accept'
+  ],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
@@ -50,7 +61,7 @@ app.get('/health', (req, res) => {
 const DESIGN_AGENT_CARD = {
   name: 'YouMeYou Design Agents',
   description: 'AI-powered system design and architecture agents for building complete applications',
-  url: `http://localhost:${config.port}`,
+  url: config.a2a.baseUrl,
   version: '1.0.0',
   capabilities: {
     streaming: true,
