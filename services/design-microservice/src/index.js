@@ -211,12 +211,23 @@ app.use('*', (req, res) => {
 // Start the server
 const PORT = config.port || 4000;
 app.listen(PORT, () => {
-  logger.info(`🚀 Design microservice running on port ${PORT}`);
-  logger.info(`📊 Environment: ${config.environment}`);
-  logger.info(`🔑 Google AI: ${config.googleAI.apiKey ? 'configured' : 'not configured'}`);
-  logger.info(`🌐 CORS origins: ${config.cors.origins.join(', ')}`);
-  logger.info(`🎯 A2A Agent Card: http://localhost:${PORT}/.well-known/agent.json`);
-  logger.info(`🔄 A2A Endpoints: http://localhost:${PORT}/a2a/*`);
+  logger.info('🚀 Design microservice startup configuration:');
+  logger.info(`├── Environment: ${config.environment}`);
+  logger.info(`├── Port: ${PORT}`);
+  logger.info(`├── Auth Service: ${config.authService.url}`);
+  logger.info(`├── A2A Configuration:`);
+  logger.info(`│   ├── Base URL: ${config.a2a.baseUrl}`);
+  logger.info(`│   ├── Project ID: ${config.a2a.projectId}`);
+  logger.info(`│   └── API Key: ${config.a2a.apiKey ? 'Configured' : 'Missing'}`);
+  logger.info(`├── Google AI: ${config.googleAI.apiKey ? 'Configured' : 'Missing'}`);
+  logger.info(`├── CORS Origins:`);
+  config.cors.origins.forEach(origin => {
+    logger.info(`│   └── ${origin}`);
+  });
+  logger.info(`├── MongoDB: ${config.mongodb.uri}`);
+  logger.info(`├── Redis: ${config.redis.host}:${config.redis.port}`);
+  logger.info(`├── A2A Agent Card: ${config.a2a.baseUrl}/.well-known/agent.json`);
+  logger.info(`└── A2A Endpoints: ${config.a2a.baseUrl}/a2a/*`);
 });
 
 export default app;
