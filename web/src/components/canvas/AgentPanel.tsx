@@ -149,7 +149,8 @@ Please provide specific, actionable advice for this architecture.
       const apiResponse = await askAgent({
         content: input,
         canvasState: canvasState,
-        agentId: selectedAgent.id
+        agentId: selectedAgent.id,
+        type: 'chat'
       });
       
       const response = apiResponse.data.response;

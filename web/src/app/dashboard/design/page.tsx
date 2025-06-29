@@ -326,7 +326,8 @@ function DesignCanvasPage() {
       const result = await askAgent({
         content: `Generate production-ready code for ${node.data.label}`,
         canvasState: { nodes, edges },
-        agentId: 'code-001' // Use code generation agent
+        agentId: 'code-001', // Use code generation agent
+        type: 'code' // Specify the task type for code generation
       });
       
       // Display the generated code (you can enhance this with a modal or dedicated view)
@@ -370,12 +371,18 @@ function DesignCanvasPage() {
     setIsAgentTyping(true);
 
     try {
+      console.log('🔥 About to call askAgent function');
+      console.log('🔥 askAgent function type:', typeof askAgent);
+      
       // Use the centralized askAgent API that respects environment configuration
       const result = await askAgent({
         content: chatInput,
         canvasState: { nodes, edges },
-        agentId: 'arch-001' // Default to architecture agent
+        agentId: 'arch-001', // Default to architecture agent
+        type: 'chat' // Specify the task type for proper routing
       });
+      
+      console.log('🔥 askAgent call completed, result:', result);
       
       // Extract the response content from the API structure
       let responseContent = "I'm here to help with your architecture! Could you tell me more about what you're trying to build?";

@@ -77,6 +77,7 @@ interface AgentRequest {
   canvasState?: any;
   agentId?: string;
   component?: any;
+  type?: string;
 }
 
 // Initialize A2A streaming service
@@ -85,8 +86,21 @@ const streamingService = new A2AStreamingService();
 // Agent functions
 export const askAgent = async (request: AgentRequest) => {
   try {
-    console.log('🤖 Sending request to agent:', request);
-    const response = await api.post(getEndpoint('/agents/ask'), request);
+    console.log('🤖 askAgent function called with request:', request);
+    
+    // Validate request parameters
+    if (!request.content) {
+      throw new Error('Content is required for agent request');
+    }
+    
+    // Ensure type is set with a default
+    const requestWithDefaults = {
+      ...request,
+      type: request.type || 'chat'
+    };
+    
+    console.log('📤 Sending request to agent endpoint:', getEndpoint('/agents/ask'));
+    const response = await api.post(getEndpoint('/agents/ask'), requestWithDefaults);
     console.log('✅ Agent response received:', response.data);
     return response.data;
   } catch (error) {
