@@ -5,7 +5,8 @@ import { config } from '../config/index.js';
 const requireAuth = async (req, res, next) => {
   try {
     // Get token from cookies or Authorization header
-    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+    const token = (req.cookies && req.cookies.token) || 
+                  (req.headers.authorization && req.headers.authorization.split(' ')[1]);
     
     if (!token) {
       return res.status(401).json({ error: 'Authentication required' });

@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { config } from './config/index.js';
 import logger from './utils/logger.js';
 
@@ -33,6 +34,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(cookieParser());
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -145,18 +147,22 @@ const requestHandler = new DefaultRequestHandler(
 );
 
 // Setup A2A routes using the SDK
-const a2aApp = new A2AExpressApp(requestHandler);
+try {
+  const a2aApp = new A2AExpressApp(requestHandler);
 
-// Add optional authentication for A2A routes in production
-if (config.environment === 'production') {
-  logger.info('🔒 Adding authentication to A2A routes in production');
-  a2aApp.setupRoutes(app, '/a2a', authMiddleware);
-} else {
-  logger.info('🔓 A2A routes running without authentication in development');
-  a2aApp.setupRoutes(app, '/a2a');
+  // Add optional authentication for A2A routes in production
+  if (config.environment === 'production') {
+    logger.info('🔒 Adding authentication to A2A routes in production');
+    a2aApp.setupRoutes(app, '/a2a', authMiddleware);
+  } else {
+    logger.info('🔓 A2A routes running without authentication in development/staging');
+    a2aApp.setupRoutes(app, '/a2a');
+  }
+
+  logger.info('🚀 A2A Server routes configured successfully');
+} catch (error) {
+  logger.error('❌ Failed to setup A2A routes:', error);
 }
-
-logger.info('🚀 A2A Server routes configured');
 
 // Traditional REST API routes (for backward compatibility)
 app.use('/api/workspaces', authMiddleware, workspaceRoutes);

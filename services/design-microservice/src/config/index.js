@@ -5,6 +5,9 @@ export const config = {
     apiKey: process.env.A2A_API_KEY,
     baseUrl: process.env.A2A_BASE_URL || 'http://localhost:4000'
   },
+  authService: {
+    url: process.env.AUTH_SERVICE_URL || 'http://auth-service:3001'
+  },
   api: {
     geminiEndpoint: process.env.GEMINI_ENDPOINT || 'http://localhost:8000/gemini',
     distilbertEndpoint: process.env.DISTILBERT_ENDPOINT || 'http://localhost:8000/distilbert',
