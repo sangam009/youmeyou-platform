@@ -9,7 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@a2a-js/sdk": "^0.2.1",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",

@@ -1,4 +1,3 @@
-import { A2AClient, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, TaskStatus, Part, TextPart } from "@a2a-js/sdk";
 import { config } from '../config';
 
 export interface StreamingOptions {
@@ -10,69 +9,52 @@ export interface StreamingOptions {
 }
 
 export class A2AStreamingService {
-  private a2aClient: A2AClient;
+  private baseUrl: string;
 
   constructor() {
-    // Initialize with proper base URL
-    this.a2aClient = new A2AClient(config.api.designService);
+    // Use HTTP-based streaming instead of A2A SDK to avoid server-side dependencies
+    this.baseUrl = config.api.designService;
   }
 
   async startStreamingExecution(task: any, options: StreamingOptions = {}) {
     try {
-      // First check if the agent card is available
-      try {
-        await this.a2aClient.getAgentCard();
-      } catch (error) {
-        console.error('Failed to fetch agent card:', error);
-        throw new Error('Design service is not available. Please ensure the service is running.');
-      }
-
-      const stream = await this.a2aClient.sendMessageStream({
-        message: {
-          messageId: task.id || Date.now().toString(),
-          role: "user",
-          parts: [{ kind: "text", text: task.prompt } as TextPart],
-          kind: "message"
-        }
+      console.log('🔄 Starting streaming execution:', task);
+      
+      // For now, use regular HTTP API instead of streaming
+      // This avoids the server-side dependency issues
+      const response = await fetch(`${this.baseUrl}/agents/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          content: task.prompt,
+          type: task.type || 'general',
+          canvasId: task.canvasId,
+          architecture: task.architecture
+        })
       });
 
-      // Process streaming responses
-      for await (const event of stream) {
-        if (event.kind === 'status-update') {
-          const statusEvent = event as TaskStatusUpdateEvent;
-          const status = statusEvent.status as TaskStatus & { progress?: number; result?: any };
-          
-          // Handle progress updates
-          if (status.progress && options.onProgress) {
-            options.onProgress(status.progress);
-          }
-
-          // Handle completion
-          if (status.state === 'completed' && options.onComplete) {
-            options.onComplete(status.result);
-          }
-
-        } else if (event.kind === 'artifact-update') {
-          const artifactEvent = event as TaskArtifactUpdateEvent;
-          
-          // Handle canvas updates
-          if (artifactEvent.artifact.name?.includes('canvas') && options.onCanvasUpdate) {
-            options.onCanvasUpdate(this.parseCanvasArtifact(artifactEvent.artifact));
-          }
-          
-          // Handle code updates
-          if ((artifactEvent.artifact.name?.includes('.js') || 
-               artifactEvent.artifact.name?.includes('.ts')) && 
-              options.onCodeUpdate) {
-            const part = artifactEvent.artifact.parts[0] as TextPart;
-            options.onCodeUpdate({
-              filename: artifactEvent.artifact.name,
-              content: part?.text
-            });
-          }
-        }
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+
+      const result = await response.json();
+      
+      // Simulate progress for now
+      if (options.onProgress) {
+        options.onProgress(0.5);
+      }
+      
+      // Complete the task
+      if (options.onComplete) {
+        options.onComplete(result);
+      }
+      
+      return result;
     } catch (error) {
+      console.error('❌ Streaming execution error:', error);
       if (options.onError) {
         options.onError(error);
       }
@@ -82,8 +64,7 @@ export class A2AStreamingService {
 
   private parseCanvasArtifact(artifact: any) {
     try {
-      const part = artifact.parts[0] as TextPart;
-      const canvasData = JSON.parse(part?.text || '{}');
+      const canvasData = typeof artifact === 'string' ? JSON.parse(artifact) : artifact;
       return {
         nodes: canvasData.nodes || [],
         edges: canvasData.edges || [],
