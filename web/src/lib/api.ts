@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { config } from '@/config';
 
 export interface UserProfile {
   uid: string;
@@ -9,8 +8,23 @@ export interface UserProfile {
   phoneNumber: string | null;
 }
 
+// Determine the base URL based on the current hostname
+const getBaseUrl = () => {
+  if (typeof window === 'undefined') return process.env.NEXT_PUBLIC_API_URL || 'https://youmeyou.ai';
+  
+  const hostname = window.location.hostname;
+  if (hostname.includes('staging')) {
+    return 'https://staging.youmeyou.ai';
+  }
+  if (hostname.includes('localhost')) {
+    return 'http://localhost:3001'; // Direct auth service for local dev
+  }
+  return 'https://youmeyou.ai';
+};
+
 const api = axios.create({
-  baseURL: config.auth.serviceUrl,
+  baseURL: getBaseUrl(),
+  withCredentials: true, // Important for session cookies
   headers: {
     'Content-Type': 'application/json'
   }
@@ -40,19 +54,32 @@ api.interceptors.response.use(
 
 export const authApi = {
   createUser: async (provider: string, data: any) => {
-    const response = await api.post('/users', data);
+    // For production/staging: use nginx proxy path, for local: direct service path
+    const endpoint = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
+      ? '/user/create' 
+      : '/api/auth/user/create';
+    const response = await api.post(endpoint, { provider, payload: data });
     return response.data;
   },
   getUser: async (user: UserProfile) => {
-    const response = await api.get(`/users/${user.uid}`);
+    const endpoint = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
+      ? `/user/${user.uid}` 
+      : `/api/auth/user/${user.uid}`;
+    const response = await api.get(endpoint);
     return response.data;
   },
   checkSession: async () => {
-    const response = await api.get('/session');
+    const endpoint = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
+      ? '/session/check' 
+      : '/api/auth/session/check';
+    const response = await api.get(endpoint);
     return response.data;
   },
   logout: async () => {
-    const response = await api.post('/logout');
+    const endpoint = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
+      ? '/session/logout' 
+      : '/api/auth/session/logout';
+    const response = await api.post(endpoint);
     return response.data;
   }
 };
