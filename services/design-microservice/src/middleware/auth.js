@@ -8,63 +8,61 @@ const requireAuth = async (req, res, next) => {
       path: req.path,
       method: req.method,
       headers: {
-        authorization: req.headers.authorization ? 'Present' : 'Missing',
-        cookie: req.headers.cookie ? 'Present' : 'Missing'
+        cookie: req.headers.cookie ? 'Present' : 'Missing',
+        'user-agent': req.headers['user-agent']
       }
     });
 
-    // Get token from cookies or Authorization header
-    let token = null;
-    
-    // First try to get token from Authorization header
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-      logger.info('🔑 Token found in Authorization header');
-    }
-    
-    // If no token in Authorization header, try cookies
-    if (!token && req.cookies) {
-      token = req.cookies.token;
-      if (token) {
-        logger.info('🔑 Token found in cookies');
-      }
-    }
-    
-    if (!token) {
-      logger.error('❌ No authentication token found in request', {
-        headers: req.headers,
-        cookies: req.cookies
-      });
-      return res.status(401).json({ error: 'Authentication required' });
+    // Check if we have cookies (the auth service uses cookie-based sessions)
+    if (!req.headers.cookie) {
+      logger.error('❌ No cookies found in request');
+      return res.status(401).json({ error: 'Authentication required - no session cookie' });
     }
 
-    // Verify token with auth service
+    // Extract session ID from cookies
+    let sessionId = null;
+    const cookies = req.headers.cookie.split(';')
+      .map(cookie => cookie.trim())
+      .reduce((acc, cookie) => {
+        const [key, value] = cookie.split('=');
+        acc[key] = decodeURIComponent(value);
+        return acc;
+      }, {});
+
+    // Look for connect.sid cookie (used by express-session)
+    sessionId = cookies['connect.sid'];
+    
+    if (!sessionId) {
+      logger.error('❌ No session cookie (connect.sid) found in request', {
+        availableCookies: Object.keys(cookies)
+      });
+      return res.status(401).json({ error: 'Authentication required - no session ID' });
+    }
+
+    logger.info('🔑 Session ID found in cookies', {
+      sessionIdPrefix: sessionId.substring(0, 10) + '...'
+    });
+
+    // Verify session with auth service using cookie-based approach
     const authServiceUrl = config.authService?.url || process.env.AUTH_SERVICE_URL || 'http://auth-service:3001';
-    logger.info('🔍 Verifying token with auth service', { authServiceUrl });
+    logger.info('🔍 Verifying session with auth service', { authServiceUrl });
     
     try {
-      // Forward all cookies and authorization header to auth service
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        Cookie: req.headers.cookie || '',
-        'X-Forwarded-For': req.ip
-      };
-      
-      logger.info('📤 Sending request to auth service', {
-        url: `${authServiceUrl}/session/check`,
-        headers
-      });
-
+      // Use the /session/check endpoint which expects cookies
       const response = await axios.get(`${authServiceUrl}/session/check`, {
-        headers,
+        headers: {
+          Cookie: req.headers.cookie,
+          'User-Agent': req.headers['user-agent'] || 'DesignService/1.0',
+          'X-Forwarded-For': req.ip,
+          'X-Forwarded-Proto': req.protocol
+        },
         withCredentials: true
       });
 
       logger.info('📥 Received response from auth service', {
         status: response.status,
         hasUser: !!response.data.user,
-        responseHeaders: response.headers
+        responseStatus: response.data.status
       });
 
       if (response.data.status === 'success' && response.data.user) {
@@ -74,9 +72,17 @@ const requireAuth = async (req, res, next) => {
           logger.info('🍪 Forwarding Set-Cookie headers from auth service');
         }
         
-        req.user = response.data.user;
+        // Map the auth service response to our expected format
+        req.user = {
+          userId: response.data.user.uuid,
+          uuid: response.data.user.uuid,
+          role: response.data.user.role,
+          ...response.data.user
+        };
+        
         logger.info('✅ Authentication successful', {
-          userId: response.data.user.userId
+          userId: req.user.userId,
+          role: req.user.role
         });
         next();
       } else {
@@ -89,9 +95,16 @@ const requireAuth = async (req, res, next) => {
       logger.error('❌ Auth service error', {
         error: authError.message,
         response: authError.response?.data,
-        stack: authError.stack
+        status: authError.response?.status,
+        url: authError.config?.url
       });
-      res.status(401).json({ error: 'Authentication failed' });
+      
+      // Handle specific error cases
+      if (authError.response?.status === 401) {
+        res.status(401).json({ error: 'Session expired or invalid' });
+      } else {
+        res.status(401).json({ error: 'Authentication service unavailable' });
+      }
     }
   } catch (error) {
     logger.error('❌ Auth middleware error', {

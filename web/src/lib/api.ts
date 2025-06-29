@@ -31,45 +31,52 @@ const api = axios.create({
   }
 });
 
-// Add request interceptor for auth
+// Add request interceptor for logging and cookie handling
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  // Log the request for debugging
+  console.log('🚀 API Request:', {
+    method: config.method?.toUpperCase(),
+    url: config.url,
+    baseURL: config.baseURL,
+    withCredentials: config.withCredentials
+  });
   
   // Ensure credentials are always sent
   config.withCredentials = true;
   
-  // Add CSRF protection if needed
-  const csrfToken = document.cookie.split('; ').find(row => row.startsWith('XSRF-TOKEN'))?.split('=')[1];
-  if (csrfToken) {
-    config.headers['X-XSRF-TOKEN'] = csrfToken;
-  }
-  
   return config;
 }, (error) => {
+  console.error('❌ Request Error:', error);
   return Promise.reject(error);
 });
 
 // Add response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    // Handle Set-Cookie headers if present
-    const setCookie = response.headers['set-cookie'];
-    if (setCookie) {
-      // The browser will automatically handle the cookie
-      console.log('Received new cookies from server');
-    }
+    // Log successful responses
+    console.log('✅ API Response:', {
+      status: response.status,
+      url: response.config.url,
+      hasSetCookie: !!response.headers['set-cookie']
+    });
+    
     return response;
   },
   async (error) => {
+    console.error('❌ API Error:', {
+      status: error.response?.status,
+      url: error.config?.url,
+      message: error.response?.data?.message || error.message
+    });
+    
     if (error.response?.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem('token');
-      // Only redirect if we're in a browser context
+      // Handle unauthorized access - redirect to login
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        // Only redirect if we're not already on the login page
+        if (!window.location.pathname.includes('/login')) {
+          console.log('🔄 Redirecting to login due to 401');
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
@@ -104,7 +111,6 @@ export const authApi = {
       ? '/session/logout' 
       : '/api/auth/session/logout';
     const response = await api.post(endpoint);
-    localStorage.removeItem('token');
     return response.data;
   }
 };
