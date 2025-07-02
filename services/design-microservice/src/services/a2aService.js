@@ -3,42 +3,70 @@ import logger from '../utils/logger.js';
 import ProjectManagerAgent from './agents/ProjectManagerAgent.js';
 import TechLeadAgent from './agents/TechLeadAgent.js';
 import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
+import { IntelligentTaskRouter } from './IntelligentTaskRouter.js';
 
 class A2AService {
   constructor() {
-    // Initialize orchestrator and agents
+    // Initialize intelligent router and orchestrator
+    this.intelligentRouter = new IntelligentTaskRouter();
     this.orchestrator = new AgentOrchestrator();
     this.projectManager = new ProjectManagerAgent();
     this.techLead = new TechLeadAgent();
     
-    logger.info('🤖 A2AService initialized with orchestrator and agents');
+    logger.info('🚀 A2AService initialized with IntelligentTaskRouter and orchestrator');
   }
 
   async routeTask(task) {
     try {
-      logger.info('🔄 Routing task through A2A service:', {
-        type: task.type,
+      logger.info('🧠 Routing task through INTELLIGENT A2A service:', {
         hasContent: !!task.content,
-        userId: task.userId
+        contentLength: task.content?.length || 0,
+        userId: task.userId,
+        hasCanvasState: !!task.canvasState
       });
 
-      // Route task based on type
-      switch (task.type) {
-        case 'chat':
-        case 'general':
-          return await this.handleChatTask(task);
-        case 'analysis':
-          return await this.handleAnalysisTask(task);
-        case 'validation':
-          return await this.handleValidationTask(task);
-        case 'documentation':
-          return await this.handleDocumentationTask(task);
-        default:
-          return await this.handleGenericTask(task);
-      }
+      // Use intelligent routing - NO MORE CLIENT-PROVIDED TYPES!
+      // The system will analyze the prompt and determine complexity/routing
+      const result = await this.intelligentRouter.routeTask(
+        task.content, 
+        {
+          canvasState: task.canvasState,
+          userId: task.userId,
+          timestamp: new Date().toISOString()
+        }
+      );
+
+      // Format response for consistency with existing API
+      return {
+        agentId: result.executionType === 'complex' ? 'multi-agent-system' : 'single-agent-system',
+        agentName: result.executionType === 'complex' ? 'Multi-Agent AI System' : 'AI Assistant',
+        response: result.response,
+        executedAt: new Date(),
+        metadata: {
+          ...result.metadata,
+          executionType: result.executionType,
+          complexity: result.complexity,
+          intelligentRouting: true
+        }
+      };
     } catch (error) {
-      logger.error('❌ Error routing task:', error);
-      throw error;
+      logger.error('❌ Error in intelligent task routing:', error);
+      
+      // Fallback to basic response
+      return {
+        agentId: 'fallback-system',
+        agentName: 'System Assistant',
+        response: {
+          content: 'I encountered an issue processing your request, but I\'m here to help! Could you try rephrasing your question?',
+          analysis: 'Error occurred during intelligent routing',
+          suggestions: ['Try a more specific question', 'Check your request format', 'Contact support if the issue persists']
+        },
+        executedAt: new Date(),
+        metadata: {
+          error: error.message,
+          fallbackMode: true
+        }
+      };
     }
   }
 

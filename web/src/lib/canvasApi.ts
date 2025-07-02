@@ -75,9 +75,8 @@ interface ArchitectureRequest {
 interface AgentRequest {
   content: string;
   canvasState?: any;
-  agentId?: string;
   component?: any;
-  type?: string;
+  // Removed agentId and type - backend will intelligently analyze and route
 }
 
 // Initialize A2A streaming service
@@ -93,10 +92,9 @@ export const askAgent = async (request: AgentRequest) => {
       throw new Error('Content is required for agent request');
     }
     
-    // Ensure type is set with a default
+    // No need for type parameter - backend will intelligently analyze the prompt
     const requestWithDefaults = {
-      ...request,
-      type: request.type || 'chat'
+      ...request
     };
     
     console.log('📤 Sending request to agent endpoint:', getEndpoint('/agents/ask'));

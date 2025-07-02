@@ -322,12 +322,11 @@ function DesignCanvasPage() {
         }
       };
 
-      // Call the A2A service using centralized API
+      // Call the A2A service using centralized API - let backend analyze and route
       const result = await askAgent({
-        content: `Generate production-ready code for ${node.data.label}`,
-        canvasState: { nodes, edges },
-        agentId: 'code-001', // Use code generation agent
-        type: 'code' // Specify the task type for code generation
+        content: `Generate production-ready code for ${node.data.label}. Please provide complete, well-structured code with proper error handling and documentation.`,
+        canvasState: { nodes, edges }
+        // Backend will intelligently detect this is a code generation request
       });
       
       // Display the generated code (you can enhance this with a modal or dedicated view)
@@ -374,12 +373,11 @@ function DesignCanvasPage() {
       console.log('🔥 About to call askAgent function');
       console.log('🔥 askAgent function type:', typeof askAgent);
       
-      // Use the centralized askAgent API that respects environment configuration
+      // Use the centralized askAgent API - let backend intelligently analyze the prompt
       const result = await askAgent({
         content: chatInput,
-        canvasState: { nodes, edges },
-        agentId: 'arch-001', // Default to architecture agent
-        type: 'chat' // Specify the task type for proper routing
+        canvasState: { nodes, edges }
+        // No more client-side type specification - backend will analyze complexity and route intelligently
       });
       
       console.log('🔥 askAgent call completed, result:', result);

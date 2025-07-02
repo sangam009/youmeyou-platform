@@ -145,12 +145,11 @@ Please provide specific, actionable advice for this architecture.
 
       setActiveAgent(selectedAgent.id);
 
-      // Use real AI agent API
+      // Use real AI agent API - let backend intelligently analyze and route
       const apiResponse = await askAgent({
         content: input,
-        canvasState: canvasState,
-        agentId: selectedAgent.id,
-        type: 'chat'
+        canvasState: canvasState
+        // Backend will intelligently analyze the prompt and select appropriate agents
       });
       
       const response = apiResponse.data.response;

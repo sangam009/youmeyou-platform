@@ -69,6 +69,8 @@ services:
       GOOGLE_AI_KEY: AIzaSyD4hpoKE-RdZdGYT1lTt_oFEumgvEr4riY
       A2A_API_KEY: demo-a2a-key
       A2A_PROJECT_ID: codaloo-staging
+      # VectorDB Configuration
+      CHROMA_URL: http://youmeyou-chromadb:8000
     ports:
       - "4000:4000"  # Server-level access (not public via firewall)
     depends_on:
@@ -77,6 +79,8 @@ services:
     networks:
       - youmeyou-data
       - youmeyou-internal
+      - cpu-models-internal
+      - vectordb-internal
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
       interval: 30s
@@ -105,4 +109,10 @@ networks:
   youmeyou-data:
     external: true
   youmeyou-internal:
-    external: true 
+    external: true
+  cpu-models-internal:
+    external: true
+    name: cpu-models_cpu-models-internal
+  vectordb-internal:
+    external: true
+    name: vectordb-internal 

@@ -5,13 +5,10 @@ import CanvasContent from '../models/canvasContentModel.js';
 import { v4 as uuidv4 } from 'uuid';
 import ProjectMetadataModel from '../models/projectMetadataModel.js';
 import CanvasContentModel from '../models/canvasContentModel.js';
-import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
-
 class CanvasService {
   constructor() {
     this.projectMetadataModel = new ProjectMetadataModel();
     this.canvasContentModel = new CanvasContentModel();
-    this.orchestrator = new AgentOrchestrator();
   }
 
   async createCanvas(userId, projectId, canvasData) {
@@ -36,8 +33,10 @@ class CanvasService {
         requirements: canvasData.requirements
       };
 
-      // Get initial architecture design
-      const design = await this.orchestrator.routeTask(task, context);
+      // Get initial architecture design using direct agent import
+      const { ArchitectureDesignerAgent } = await import('./agents/ArchitectureDesignerAgent.js');
+      const architectureAgent = new ArchitectureDesignerAgent();
+      const design = await architectureAgent.execute(task.requirements.join(', '), context);
 
       // Update canvas with design
       canvas.content = {
@@ -81,9 +80,11 @@ class CanvasService {
           framework: updates.framework
         };
 
-        const result = await this.orchestrator.routeTask(task, context);
-        canvas.content.generatedCode = result.code;
-        canvas.content.codeAnalysis = result.analysis;
+        const CodeGeneratorAgent = (await import('./agents/CodeGeneratorAgent.js')).default;
+        const codeAgent = new CodeGeneratorAgent();
+        const result = await codeAgent.execute(`Generate ${updates.language} code for: ${updates.description}`, context);
+        canvas.content.generatedCode = result.code || result.response;
+        canvas.content.codeAnalysis = result.analysis || 'Code generated';
       } 
       else if (updates.type === 'architecture_update') {
         const task = {
@@ -91,13 +92,15 @@ class CanvasService {
           requirements: updates.requirements
         };
 
-        const result = await this.orchestrator.routeTask(task, context);
+        const { ArchitectureDesignerAgent } = await import('./agents/ArchitectureDesignerAgent.js');
+        const architectureAgent = new ArchitectureDesignerAgent();
+        const result = await architectureAgent.execute(updates.requirements.join(', '), context);
         canvas.content = {
           ...canvas.content,
-          design: result.design,
-          diagram: result.diagram,
-          documentation: result.documentation,
-          analysis: result.analysis
+          design: result.design || result.response,
+          diagram: result.diagram || 'Architecture diagram',
+          documentation: result.documentation || 'Architecture documentation',
+          analysis: result.analysis || 'Architecture analysis'
         };
       }
       else if (updates.type === 'database_design') {
@@ -107,16 +110,18 @@ class CanvasService {
           currentSchema: canvas.content.databaseSchema
         };
 
-        const result = await this.orchestrator.routeTask(task, context);
+        const DatabaseDesignerAgent = (await import('./agents/DatabaseDesignerAgent.js')).default;
+        const dbAgent = new DatabaseDesignerAgent();
+        const result = await dbAgent.execute(updates.requirements.join(', '), context);
         canvas.content = {
           ...canvas.content,
-          databaseSchema: result.schema,
-          erDiagram: result.erDiagram,
-          queryOptimization: result.optimization,
-          indexingStrategy: result.indexing,
-          migrationPlan: result.migrationPlan,
-          schemaValidation: result.validation,
-          databaseOptimizations: result.optimizations
+          databaseSchema: result.schema || result.response,
+          erDiagram: result.erDiagram || 'ER diagram',
+          queryOptimization: result.optimization || 'Query optimization',
+          indexingStrategy: result.indexing || 'Indexing strategy',
+          migrationPlan: result.migrationPlan || 'Migration plan',
+          schemaValidation: result.validation || 'Schema validation',
+          databaseOptimizations: result.optimizations || 'Database optimizations'
         };
       }
       else if (updates.type === 'documentation_update') {
@@ -125,8 +130,10 @@ class CanvasService {
           content: canvas.content
         };
 
-        const result = await this.orchestrator.routeTask(task, context);
-        canvas.content.documentation = result.documentation;
+        const TechLeadAgent = (await import('./agents/TechLeadAgent.js')).default;
+        const techLeadAgent = new TechLeadAgent();
+        const result = await techLeadAgent.execute('Generate documentation for this project', context);
+        canvas.content.documentation = result.documentation || result.response;
       }
 
       // Save updates
@@ -165,9 +172,15 @@ class CanvasService {
         currentSchema: canvas.content.databaseSchema
       };
 
+      const CodeGeneratorAgent = (await import('./agents/CodeGeneratorAgent.js')).default;
+      const DatabaseDesignerAgent = (await import('./agents/DatabaseDesignerAgent.js')).default;
+      
+      const codeAgent = new CodeGeneratorAgent();
+      const dbAgent = new DatabaseDesignerAgent();
+      
       const [architectureAnalysis, databaseAnalysis] = await Promise.all([
-        this.orchestrator.routeTask(architectureTask, context),
-        this.orchestrator.routeTask(databaseTask, context)
+        codeAgent.execute(`Analyze this code: ${canvas.content.generatedCode}`, context),
+        dbAgent.execute(`Analyze database schema: ${JSON.stringify(canvas.content.databaseSchema)}`, context)
       ]);
       
       // Update canvas with analysis results
