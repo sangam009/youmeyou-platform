@@ -20,18 +20,18 @@ export class A2AStreamingService {
     try {
       console.log('🔄 Starting streaming execution:', task);
       
-      // For now, use regular HTTP API instead of streaming
-      // This avoids the server-side dependency issues
+      // Use streaming API with Server-Sent Events
       const response = await fetch(`${this.baseUrl}/agents/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/stream',
         },
         credentials: 'include',
         body: JSON.stringify({
           content: task.prompt,
           type: task.type || 'general',
-          canvasId: task.canvasId,
+          canvasState: { projectId: task.canvasId },
           architecture: task.architecture
         })
       });
