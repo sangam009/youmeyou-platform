@@ -1,4 +1,5 @@
 import logger from '../../utils/logger.js';
+import { LLMAgent } from './LLMAgent.js';
 
 /**
  * Base Conversational Agent - Implements Natural LLM Conversation Flow
@@ -10,6 +11,7 @@ export class ConversationalAgent {
     this.specialization = specialization;
     this.completionThreshold = 0.8; // 80% completion threshold
     this.maxConversationTurns = 10; // Prevent infinite loops
+    this.llmAgent = LLMAgent.getInstance(); // Initialize LLM agent once
     
     logger.info(`🤖 ConversationalAgent initialized: ${agentName} (${specialization})`);
   }
@@ -25,10 +27,6 @@ export class ConversationalAgent {
       if (context.streamingEnabled && context.streamingCallback) {
         return await this.executeWithStreaming(userQuery, context);
       }
-      
-      // Import LLMAgent for collaboration
-      const { LLMAgent } = await import('./LLMAgent.js');
-      const llmAgent = new LLMAgent();
       
       // Initialize conversation state
       const conversationState = {
@@ -53,14 +51,14 @@ export class ConversationalAgent {
         let llmResponse;
         if (conversationState.conversationTurns === 1) {
           // First conversation
-          llmResponse = await llmAgent.collaborateWithAgent(
+          llmResponse = await this.llmAgent.collaborateWithAgent(
             this.agentName,
             nextPrompt,
             context
           );
         } else {
           // Continue conversation
-          llmResponse = await llmAgent.continueConversation(
+          llmResponse = await this.llmAgent.continueConversation(
             this.agentName,
             nextPrompt,
             { ...context, conversationState }
@@ -113,10 +111,6 @@ export class ConversationalAgent {
     try {
       logger.info(`🎯 ${this.agentName} starting STREAMING conversation for task:`, userQuery.substring(0, 100));
       
-      // Import LLMAgent for collaboration
-      const { LLMAgent } = await import('./LLMAgent.js');
-      const llmAgent = new LLMAgent();
-      
       // Initialize conversation state
       const conversationState = {
         originalTask: userQuery,
@@ -168,14 +162,14 @@ export class ConversationalAgent {
         let llmResponse;
         if (conversationState.conversationTurns === 1) {
           // First conversation
-          llmResponse = await llmAgent.collaborateWithAgent(
+          llmResponse = await this.llmAgent.collaborateWithAgent(
             this.agentName,
             nextPrompt,
             context
           );
         } else {
           // Continue conversation
-          llmResponse = await llmAgent.continueConversation(
+          llmResponse = await this.llmAgent.continueConversation(
             this.agentName,
             nextPrompt,
             { ...context, conversationState }

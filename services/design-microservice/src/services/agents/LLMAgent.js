@@ -1,25 +1,48 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../../utils/logger.js';
 
+// Rate limiting configuration
+const RATE_LIMIT = {
+  requestsPerMinute: 50, // Keep under 60 RPM limit for gemini-2.0-flash
+  requestQueue: [],
+  lastRequestTime: null,
+  minRequestInterval: 60000 / 50, // Minimum time between requests in ms
+};
+
 /**
- * LLM Agent - Powered by Gemini for complex reasoning and generation
+ * LLM Agent - Powered by Gemini 2.0 Flash for fast, reliable responses
  * This agent is used by specialized agents for LLM-powered tasks
+ * Implements singleton pattern to prevent multiple instances
  */
 export class LLMAgent {
+  static instance = null;
+
+  static getInstance() {
+    if (!LLMAgent.instance) {
+      LLMAgent.instance = new LLMAgent();
+    }
+    return LLMAgent.instance;
+  }
+
   constructor() {
+    // Prevent multiple instances
+    if (LLMAgent.instance) {
+      return LLMAgent.instance;
+    }
+
     // Initialize Gemini LLM connection
     if (!process.env.GOOGLE_AI_KEY) {
       throw new Error('GOOGLE_AI_KEY environment variable is required for LLMAgent');
     }
-    
+
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
     this.model = this.genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-exp",
+      model: 'gemini-2.0-flash',
       generationConfig: {
-        temperature: 0.7,
-        topP: 0.8,
-        topK: 40,
-        maxOutputTokens: 2048,
+        temperature: 0.9,    // Increased for more creative responses
+        topP: 0.9,          // Increased for more diverse outputs
+        topK: 40,           // Keep stable for reliability
+        maxOutputTokens: 4096, // Doubled for longer responses
       }
     });
     
@@ -28,6 +51,30 @@ export class LLMAgent {
     
     logger.info('🤖 LLMAgent initialized with Gemini 2.0 Flash and real LLM connection');
     this.testConnection();
+
+    LLMAgent.instance = this;
+  }
+
+  /**
+   * Rate-limited request handler
+   */
+  async rateLimitedRequest(requestFn) {
+    const now = Date.now();
+    
+    // If this is the first request or enough time has passed since last request
+    if (!RATE_LIMIT.lastRequestTime || (now - RATE_LIMIT.lastRequestTime) >= RATE_LIMIT.minRequestInterval) {
+      RATE_LIMIT.lastRequestTime = now;
+      return await requestFn();
+    }
+    
+    // Calculate delay needed
+    const delay = RATE_LIMIT.minRequestInterval - (now - RATE_LIMIT.lastRequestTime);
+    
+    // Wait for the required delay
+    await new Promise(resolve => setTimeout(resolve, delay));
+    RATE_LIMIT.lastRequestTime = Date.now();
+    
+    return await requestFn();
   }
 
   async testConnection() {
@@ -50,8 +97,11 @@ export class LLMAgent {
       // Build enhanced prompt with context
       const enhancedPrompt = this.buildEnhancedPrompt(userQuery, context);
       
-      // Generate response with Gemini
-      const result = await this.model.generateContent(enhancedPrompt);
+      // Generate response with rate limiting
+      const result = await this.rateLimitedRequest(async () => {
+        return await this.model.generateContent(enhancedPrompt);
+      });
+      
       const response = result.response;
       
       return {
@@ -59,7 +109,7 @@ export class LLMAgent {
         analysis: 'LLM-powered analysis completed',
         suggestions: this.extractSuggestions(response.text()),
         metadata: {
-          model: 'gemini-2.0-flash-exp',
+          model: 'gemini-2.0-flash',
           tokens: response.text().length,
           timestamp: new Date().toISOString()
         }
@@ -81,8 +131,11 @@ export class LLMAgent {
       // Build agent-specific prompt
       const collaborationPrompt = this.buildCollaborationPrompt(agentName, task, context);
       
-      // Generate response
-      const result = await this.model.generateContent(collaborationPrompt);
+      // Generate response with rate limiting
+      const result = await this.rateLimitedRequest(async () => {
+        return await this.model.generateContent(collaborationPrompt);
+      });
+      
       const response = result.response;
       
       // Store conversation for context
@@ -95,7 +148,7 @@ export class LLMAgent {
         nextSteps: this.generateNextSteps(response.text(), agentName),
         metadata: {
           collaboratingAgent: agentName,
-          model: 'gemini-2.0-flash-exp',
+          model: 'gemini-2.0-flash',
           timestamp: new Date().toISOString()
         }
       };
@@ -385,7 +438,7 @@ Please provide your expert analysis and recommendations for this task.`;
   getStatus() {
     return {
       status: 'active',
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.0-flash',
       activeConversations: this.conversationHistory.size,
       capabilities: [
         'complex reasoning',

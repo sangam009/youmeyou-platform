@@ -8,7 +8,7 @@ import { LLMAgent } from './LLMAgent.js';
  */
 export class LLMDrivenTaskAnalyzer {
   constructor() {
-    this.llmAgent = new LLMAgent();
+    this.llmAgent = LLMAgent.getInstance();
     this.completionThreshold = 0.8; // 80% completion threshold
     logger.info('🧠 LLMDrivenTaskAnalyzer initialized with LLM-powered analysis');
   }

@@ -11,7 +11,7 @@ export class IntelligentTaskRouter {
   constructor() {
     this.orchestrator = new AgentOrchestrator();
     this.complexityAnalyzer = new DistilBERTComplexityAnalyzer();
-    this.llmAgent = new LLMAgent();
+    this.llmAgent = LLMAgent.getInstance();
     this.complexityThreshold = 0.7; // Simple vs Complex routing threshold
     
     logger.info('🚀 TRULY IntelligentTaskRouter initialized with CPU models and LLM');
