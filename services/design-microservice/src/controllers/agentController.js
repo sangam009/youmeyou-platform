@@ -64,8 +64,21 @@ class AgentController {
       logger.info(`🔍 Processing agent request from user ${userId}: ${content.substring(0, 100)}...`);
       
       // Check if client wants streaming response
+      logger.info('📋 Request headers:', {
+        accept: req.headers.accept,
+        'accept-header': req.headers['accept'],
+        allHeaders: Object.keys(req.headers)
+      });
+      
       const acceptsStream = req.headers.accept?.includes('text/stream') || 
-                           req.headers['accept']?.includes('application/stream+json');
+                           req.headers['accept']?.includes('application/stream+json') ||
+                           req.headers.accept?.includes('text/event-stream') ||
+                           req.query.stream === 'true';
+      
+      logger.info('📋 Streaming detection:', {
+        acceptsStream,
+        acceptHeader: req.headers.accept
+      });
       
       if (acceptsStream) {
         // Set up streaming response
@@ -118,37 +131,32 @@ class AgentController {
             timestamp: new Date().toISOString()
           })}\n\n`);
 
-          // Route task and get selected agent
+          // Route task and get selected agent - this will execute agents with streaming
           const routingResult = await router.routeTask(content, streamingContext);
           
           // Stream agent selection
           res.write(`data: ${JSON.stringify({
             type: 'agent_selected',
-            agent: routingResult.selectedAgent || 'ConversationalAgent',
+            agent: routingResult.executionType === 'complex' ? 'Multi-Agent System' : routingResult.agent || 'AI Assistant',
             complexity: routingResult.complexity,
-            status: `Selected ${routingResult.selectedAgent} for this task`,
+            status: `Selected ${routingResult.executionType === 'complex' ? 'multi-agent collaboration' : 'single agent'} for this task`,
             completionScore: 10,
             timestamp: new Date().toISOString()
           })}\n\n`);
 
-          // Execute with the selected agent using streaming
-          const result = routingResult.response || {
-            content: 'Task completed with intelligent routing',
-            analysis: routingResult.analysis || 'Routing analysis completed',
-            suggestions: routingResult.suggestions || []
-          };
-          
+          // The agents have already been executed with streaming during routeTask()
           // Send final result
           res.write(`data: ${JSON.stringify({
             type: 'completed',
             status: 'success',
             data: {
-              agentId: routingResult.selectedAgent || 'intelligent-router',
-              agentName: routingResult.selectedAgent || 'Intelligent Router',
-              response: result,
+              agentId: routingResult.executionType === 'complex' ? 'multi-agent-system' : 'single-agent-system',
+              agentName: routingResult.executionType === 'complex' ? 'Multi-Agent AI System' : 'AI Assistant',
+              response: routingResult.response,
               executedAt: new Date(),
               metadata: {
-                routingAnalysis: routingResult.analysis,
+                ...routingResult.metadata,
+                executionType: routingResult.executionType,
                 complexity: routingResult.complexity,
                 streamingEnabled: true
               }

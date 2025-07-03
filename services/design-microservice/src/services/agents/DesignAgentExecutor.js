@@ -251,8 +251,40 @@ export class DesignAgentExecutor {
       });
 
       try {
-        // Execute agent (this should be async and potentially stream)
-        const agentResult = await agent.execute(userQuery, taskAnalysis.context);
+        // Create streaming context for the agent
+        const streamingContext = {
+          ...taskAnalysis.context,
+          userId: taskAnalysis.context.userId || 'a2a-user',
+          projectId: taskAnalysis.context.projectId || 'a2a-project',
+          streamingEnabled: true,
+          streamingCallback: (progressData) => {
+            // Convert agent progress to A2A events
+            this.publishStatusUpdate(eventBus, taskId, contextId, {
+              state: 'working',
+              message: {
+                kind: 'message',
+                role: 'agent',
+                messageId: uuidv4(),
+                parts: [{ 
+                  kind: 'text', 
+                  text: `🔄 ${progressData.agent || agent.name}: ${progressData.status}` 
+                }],
+                taskId: taskId,
+                contextId: contextId
+              }
+            });
+          }
+        };
+
+        // Use streaming execution if available, otherwise fall back to regular execution
+        let agentResult;
+        if (typeof agent.executeWithStreaming === 'function') {
+          logger.info(`🌊 Using streaming execution for ${agentName}`);
+          agentResult = await agent.executeWithStreaming(userQuery, streamingContext);
+        } else {
+          logger.info(`📝 Using regular execution for ${agentName}`);
+          agentResult = await agent.execute(userQuery, streamingContext);
+        }
         
         // Publish agent completion
         await this.publishStatusUpdate(eventBus, taskId, contextId, {

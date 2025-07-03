@@ -10,12 +10,22 @@ export class VectorDBService {
     this.client = new ChromaClient({
       path: process.env.CHROMA_URL || 'http://chromadb:8000'
     });
+    
     this.collections = {
       conversations: null,
       canvasHistory: null,
       codeHistory: null,
       agentActions: null
     };
+    
+    // In-memory fallback storage
+    this.fallbackStorage = {
+      conversations: [],
+      canvasHistory: [],
+      codeHistory: [],
+      agentActions: []
+    };
+    
     this.isInitialized = false;
     this.initializeCollections();
   }
@@ -23,6 +33,10 @@ export class VectorDBService {
   async initializeCollections() {
     try {
       logger.info('🔧 Initializing VectorDB collections...');
+      
+      // Test ChromaDB connection first
+      await this.client.heartbeat();
+      logger.info('💓 ChromaDB heartbeat successful');
       
       // Create or get collections
       this.collections.conversations = await this.getOrCreateCollection(
@@ -49,6 +63,7 @@ export class VectorDBService {
       logger.info('✅ VectorDB collections initialized successfully');
     } catch (error) {
       logger.error('❌ VectorDB initialization failed:', error);
+      logger.warn('⚠️  VectorDB will operate in fallback mode (no persistence)');
       this.isInitialized = false;
     }
   }
@@ -56,11 +71,11 @@ export class VectorDBService {
   async getOrCreateCollection(name, description) {
     try {
       return await this.client.getCollection({
-        name,
-        metadata: { description }
+        name
       });
     } catch (error) {
       // Collection doesn't exist, create it
+      logger.info(`Creating new collection: ${name}`);
       return await this.client.createCollection({
         name,
         metadata: { description }
@@ -73,8 +88,8 @@ export class VectorDBService {
    */
   async storeConversationTurn(userId, projectId, turnData) {
     if (!this.isInitialized) {
-      logger.warn('VectorDB not initialized, skipping conversation storage');
-      return;
+      logger.warn('VectorDB not initialized, using fallback storage');
+      return this.storeFallbackConversation(userId, projectId, turnData);
     }
 
     try {
@@ -88,10 +103,22 @@ export class VectorDBService {
         timestamp
       } = turnData;
 
+      // Validate required fields
+      if (!userMessage || !agentResponse) {
+        logger.warn('Missing required fields for conversation turn storage');
+        return;
+      }
+
       const documentId = `${userId}_${projectId}_${turnNumber}_${timestamp}`;
       
       // Combine user message and agent response for semantic search
       const combinedText = `User: ${userMessage}\nAgent: ${agentResponse}`;
+      
+      // Ensure collections are available
+      if (!this.collections.conversations) {
+        logger.warn('Conversations collection not available, skipping storage');
+        return;
+      }
       
       await this.collections.conversations.add({
         ids: [documentId],
@@ -104,7 +131,7 @@ export class VectorDBService {
           completionScore,
           userMessage: userMessage.substring(0, 500), // Truncate for metadata
           agentResponse: agentResponse.substring(0, 500),
-          context: JSON.stringify(context),
+          context: JSON.stringify(context || {}),
           timestamp,
           type: 'conversation_turn'
         }]
@@ -113,6 +140,13 @@ export class VectorDBService {
       logger.info(`💾 Stored conversation turn ${turnNumber} for user ${userId}`);
     } catch (error) {
       logger.error('❌ Error storing conversation turn:', error);
+      logger.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        userId,
+        projectId,
+        turnData: turnData ? Object.keys(turnData) : 'undefined'
+      });
     }
   }
 
@@ -255,7 +289,9 @@ export class VectorDBService {
    * Get conversation context for agent
    */
   async getConversationContext(userId, projectId, limit = 10) {
-    if (!this.isInitialized) return [];
+    if (!this.isInitialized) {
+      return this.getFallbackConversationContext(userId, projectId, limit);
+    }
 
     try {
       const results = await this.collections.conversations.query({
@@ -392,7 +428,16 @@ export class VectorDBService {
    * Get storage statistics
    */
   async getStorageStats() {
-    if (!this.isInitialized) return null;
+    if (!this.isInitialized) {
+      // Return fallback storage stats
+      return {
+        conversations: this.fallbackStorage.conversations.length,
+        canvasHistory: this.fallbackStorage.canvasHistory.length,
+        codeHistory: this.fallbackStorage.codeHistory.length,
+        agentActions: this.fallbackStorage.agentActions.length,
+        fallbackMode: true
+      };
+    }
 
     try {
       const stats = {};
@@ -406,6 +451,55 @@ export class VectorDBService {
     } catch (error) {
       logger.error('❌ Error getting storage stats:', error);
       return null;
+    }
+  }
+
+  /**
+   * Fallback storage methods for when ChromaDB is not available
+   */
+  storeFallbackConversation(userId, projectId, turnData) {
+    try {
+      const entry = {
+        userId,
+        projectId,
+        ...turnData,
+        storedAt: new Date().toISOString()
+      };
+      
+      this.fallbackStorage.conversations.push(entry);
+      
+      // Keep only last 100 entries per user/project to prevent memory bloat
+      this.fallbackStorage.conversations = this.fallbackStorage.conversations
+        .filter(item => item.userId === userId && item.projectId === projectId)
+        .slice(-100)
+        .concat(
+          this.fallbackStorage.conversations.filter(
+            item => !(item.userId === userId && item.projectId === projectId)
+          )
+        );
+      
+      logger.info(`💾 Stored conversation turn in fallback storage for user ${userId}`);
+    } catch (error) {
+      logger.error('❌ Error in fallback conversation storage:', error);
+    }
+  }
+
+  getFallbackConversationContext(userId, projectId, limit = 10) {
+    try {
+      return this.fallbackStorage.conversations
+        .filter(item => item.userId === userId && item.projectId === projectId)
+        .slice(-limit)
+        .map(item => ({
+          userId: item.userId,
+          projectId: item.projectId,
+          agentName: item.agentName,
+          userMessage: item.userMessage,
+          agentResponse: item.agentResponse,
+          timestamp: item.timestamp
+        }));
+    } catch (error) {
+      logger.error('❌ Error getting fallback conversation context:', error);
+      return [];
     }
   }
 }

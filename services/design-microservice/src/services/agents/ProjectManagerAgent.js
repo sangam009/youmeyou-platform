@@ -307,7 +307,14 @@ Please provide a comprehensive response that addresses all requirements.
    */
   streamProgress(progressData, context) {
     if (context.streamingCallback) {
-      context.streamingCallback(progressData);
+      try {
+        context.streamingCallback(progressData);
+        logger.info(`📡 Streaming sent: ${progressData.type} - ${progressData.status}`);
+      } catch (error) {
+        logger.error('❌ Error in streaming callback:', error);
+      }
+    } else {
+      logger.warn('⚠️ No streaming callback available in context');
     }
     logger.info(`📡 Streaming: ${progressData.type} - ${progressData.status}`);
   }

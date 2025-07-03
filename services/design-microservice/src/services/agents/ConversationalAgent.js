@@ -283,7 +283,14 @@ export class ConversationalAgent {
    */
   streamProgress(progressData, context) {
     if (context.streamingCallback) {
-      context.streamingCallback(progressData);
+      try {
+        context.streamingCallback(progressData);
+        logger.info(`📡 ${this.agentName} Streaming sent: ${progressData.type} - ${progressData.status}`);
+      } catch (error) {
+        logger.error(`❌ ${this.agentName} Error in streaming callback:`, error);
+      }
+    } else {
+      logger.warn(`⚠️ ${this.agentName} No streaming callback available in context`);
     }
     logger.info(`📡 ${this.agentName} Streaming: ${progressData.type} - ${progressData.status}`);
   }

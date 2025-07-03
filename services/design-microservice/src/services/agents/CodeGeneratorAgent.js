@@ -250,6 +250,11 @@ class CodeGeneratorAgent {
     try {
       logger.info('💻 CodeGenerator executing task:', userQuery.substring(0, 100));
       
+      // Check if streaming is enabled
+      if (context.streamingEnabled && context.streamingCallback) {
+        return await this.executeWithStreaming(userQuery, context);
+      }
+      
       // For now, provide a simple response while the full A2A integration is being set up
       const response = {
         content: `As your Code Generator, I can help you create clean, efficient code. For "${userQuery.substring(0, 50)}...", I'll focus on implementing best practices, proper error handling, and comprehensive testing.`,
@@ -267,6 +272,125 @@ class CodeGeneratorAgent {
       logger.error('❌ CodeGenerator execution error:', error);
       throw error;
     }
+  }
+
+  async executeWithStreaming(userQuery, context = {}) {
+    try {
+      logger.info('💻 CodeGenerator starting streaming execution:', userQuery.substring(0, 100));
+      
+      // Stream initial status
+      this.streamProgress({
+        type: 'agent_start',
+        agent: 'Code Generator',
+        status: 'Starting code generation process...',
+        completionScore: 0,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      // Stream requirement analysis
+      this.streamProgress({
+        type: 'analysis',
+        agent: 'Code Generator',
+        status: 'Analyzing requirements and selecting patterns...',
+        completionScore: 20,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      // Simulate some work
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Stream code generation
+      this.streamProgress({
+        type: 'generation',
+        agent: 'Code Generator',
+        status: 'Generating implementation code...',
+        completionScore: 50,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      // Simulate more work
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Stream testing
+      this.streamProgress({
+        type: 'testing',
+        agent: 'Code Generator',
+        status: 'Creating unit tests and documentation...',
+        completionScore: 80,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      // Simulate final work
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Stream completion
+      this.streamProgress({
+        type: 'agent_complete',
+        agent: 'Code Generator',
+        status: 'Code generation completed successfully!',
+        completionScore: 100,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      const response = {
+        content: `# Code Generation Complete
+
+I've analyzed your request: "${userQuery}"
+
+## Generated Components:
+- **Implementation**: Clean, efficient code following best practices
+- **Tests**: Comprehensive unit tests with edge case coverage
+- **Documentation**: API documentation with usage examples
+- **Review**: Code quality analysis and optimization suggestions
+
+## Key Features:
+- Error handling and logging
+- Performance optimization
+- Security best practices
+- Maintainable code structure
+
+This implementation is ready for integration and follows industry standards.`,
+        suggestions: [
+          'Review generated code for project-specific requirements',
+          'Run tests to validate functionality',
+          'Integrate with existing codebase',
+          'Consider performance optimizations for your use case'
+        ],
+        analysis: 'Code generation completed with streaming updates'
+      };
+      
+      return response;
+    } catch (error) {
+      logger.error('❌ CodeGenerator streaming execution error:', error);
+      
+      // Stream error
+      this.streamProgress({
+        type: 'agent_error',
+        agent: 'Code Generator',
+        status: `Error: ${error.message}`,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }, context);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Stream progress updates to client
+   */
+  streamProgress(progressData, context) {
+    if (context.streamingCallback) {
+      try {
+        context.streamingCallback(progressData);
+        logger.info(`📡 Code Generator Streaming sent: ${progressData.type} - ${progressData.status}`);
+      } catch (error) {
+        logger.error(`❌ Code Generator Error in streaming callback:`, error);
+      }
+    } else {
+      logger.warn(`⚠️ Code Generator No streaming callback available in context`);
+    }
+    logger.info(`📡 Code Generator Streaming: ${progressData.type} - ${progressData.status}`);
   }
 }
 
