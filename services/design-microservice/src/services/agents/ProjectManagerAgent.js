@@ -48,6 +48,13 @@ class ProjectManagerAgent extends ConversationalAgent {
   async execute(userQuery, context = {}) {
     try {
       logger.info('🎯 ProjectManager starting natural conversation with streaming');
+      logger.info('📋 ProjectManager received context:', {
+        hasUserId: !!context.userId,
+        hasProjectId: !!context.projectId,
+        userId: context.userId,
+        projectId: context.projectId,
+        contextKeys: Object.keys(context)
+      });
       
       // Use parent's conversational execute with streaming support
       return await this.executeWithStreaming(userQuery, context);

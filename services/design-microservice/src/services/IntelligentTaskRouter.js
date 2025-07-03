@@ -23,6 +23,13 @@ export class IntelligentTaskRouter {
   async routeTask(userPrompt, context = {}) {
     try {
       logger.info('🔍 Analyzing task complexity for prompt:', userPrompt.substring(0, 100));
+      logger.info('📋 IntelligentTaskRouter received context:', {
+        hasUserId: !!context.userId,
+        hasProjectId: !!context.projectId,
+        userId: context.userId,
+        projectId: context.projectId,
+        contextKeys: Object.keys(context)
+      });
       
       // Step 1: Analyze prompt complexity and intent
       const analysis = await this.analyzePromptComplexity(userPrompt);
@@ -330,16 +337,38 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
    */
   async handleSimpleTask(prompt, analysis, context) {
     logger.info('⚡ Executing simple task with fast processing');
+    logger.info('📋 Simple task context before enhancement:', {
+      hasUserId: !!context.userId,
+      hasProjectId: !!context.projectId,
+      userId: context.userId,
+      projectId: context.projectId
+    });
     
     try {
       // Select best agent for the task
       const selectedAgent = this.selectAgentForSimpleTask(analysis);
       
+      // Ensure userId and projectId are in context
+      const enhancedContext = {
+        ...context,
+        complexity: analysis.complexity,
+        taskType: analysis.taskType,
+        userId: context.userId || 'default-user',
+        projectId: context.projectId || 'default-project'
+      };
+      
+      logger.info('📋 Simple task enhanced context:', {
+        hasUserId: !!enhancedContext.userId,
+        hasProjectId: !!enhancedContext.projectId,
+        userId: enhancedContext.userId,
+        projectId: enhancedContext.projectId
+      });
+      
       // Execute with single agent
       const result = await this.orchestrator.executeCoordinatedTask(
         [selectedAgent],
         prompt,
-        { ...context, complexity: analysis.complexity, taskType: analysis.taskType }
+        enhancedContext
       );
 
       return {
@@ -370,6 +399,12 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
   async handleComplexTask(prompt, analysis, context) {
     logger.info('🧠 Executing complex task with multi-agent collaboration');
     logger.info('📋 Sub-tasks identified:', analysis.subTasks.map(t => t.description));
+    logger.info('📋 Complex task context before enhancement:', {
+      hasUserId: !!context.userId,
+      hasProjectId: !!context.projectId,
+      userId: context.userId,
+      projectId: context.projectId
+    });
     
     try {
       // Select agents based on required skills
@@ -377,17 +412,29 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
       
       logger.info('🤖 Selected agents for complex task:', selectedAgents);
       
+      // Ensure userId and projectId are in context
+      const enhancedContext = {
+        ...context,
+        complexity: analysis.complexity,
+        taskType: analysis.taskType,
+        subTasks: analysis.subTasks,
+        requiredSkills: analysis.requiredSkills,
+        userId: context.userId || 'default-user',
+        projectId: context.projectId || 'default-project'
+      };
+      
+      logger.info('📋 Complex task enhanced context:', {
+        hasUserId: !!enhancedContext.userId,
+        hasProjectId: !!enhancedContext.projectId,
+        userId: enhancedContext.userId,
+        projectId: enhancedContext.projectId
+      });
+      
       // Execute with coordinated agents
       const result = await this.orchestrator.executeCoordinatedTask(
         selectedAgents,
         prompt,
-        { 
-          ...context, 
-          complexity: analysis.complexity,
-          taskType: analysis.taskType,
-          subTasks: analysis.subTasks,
-          requiredSkills: analysis.requiredSkills
-        }
+        enhancedContext
       );
 
       return {

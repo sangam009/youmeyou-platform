@@ -151,6 +151,12 @@ export class AgentOrchestrator {
     
     try {
       logger.info(`🚀 Executing coordinated task with ${selectedAgents.length} agents`);
+      logger.info(`📋 Context passed to agents:`, {
+        hasUserId: !!context.userId,
+        hasProjectId: !!context.projectId,
+        userId: context.userId,
+        projectId: context.projectId
+      });
 
       for (const agentName of selectedAgents) {
         const agent = this[agentName];
@@ -161,7 +167,12 @@ export class AgentOrchestrator {
         }
 
         try {
-          logger.info(`🤖 Executing ${agentName}...`);
+          logger.info(`🤖 Executing ${agentName} with context:`, {
+            userId: context.userId,
+            projectId: context.projectId,
+            hasStreaming: !!context.streamingEnabled
+          });
+          
           const result = await agent.execute(userQuery, context);
           results.push({
             agent: agentName,

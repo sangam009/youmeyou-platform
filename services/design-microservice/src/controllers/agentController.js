@@ -97,6 +97,13 @@ class AgentController {
             res.write(`data: ${JSON.stringify(progressData)}\n\n`);
           }
         };
+        
+        logger.info('📋 Created streaming context:', {
+          userId: streamingContext.userId,
+          projectId: streamingContext.projectId,
+          hasCanvasState: !!streamingContext.canvasState,
+          canvasStateKeys: streamingContext.canvasState ? Object.keys(streamingContext.canvasState) : []
+        });
 
         try {
           // Use intelligent routing to determine the best agent
