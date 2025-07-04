@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import logger from '../../utils/logger.js';
 
 // Rate limiting configuration
@@ -35,15 +35,8 @@ export class LLMAgent {
       throw new Error('GOOGLE_AI_KEY environment variable is required for LLMAgent');
     }
 
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-    this.model = this.genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-pro',
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.8,
-        topK: 40,
-        maxOutputTokens: 2048,
-      }
+    this.genAI = new GoogleGenAI({
+      apiKey: process.env.GOOGLE_AI_KEY,
     });
     
     // Conversation memory for context continuity
@@ -98,7 +91,7 @@ export class LLMAgent {
       ];
 
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContentStream({
+        return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
           config,
           contents,
@@ -149,7 +142,7 @@ export class LLMAgent {
       ];
 
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContentStream({
+        return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
           config,
           contents,
@@ -204,7 +197,7 @@ export class LLMAgent {
       ];
 
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContentStream({
+        return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
           config,
           contents,
@@ -269,7 +262,7 @@ export class LLMAgent {
       ];
 
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContentStream({
+        return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
           config,
           contents,
