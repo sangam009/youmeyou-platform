@@ -49,40 +49,60 @@ export class LLMAgent {
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
     
-    logger.info('🤖 LLMAgent initialized with Gemini Pro and real LLM connection');
+    logger.info('🤖 LLMAgent initialized with Gemini 2.5 Pro and real LLM connection');
     this.testConnection();
 
     LLMAgent.#instance = this;
   }
 
-  /**
-   * Rate-limited request handler
-   */
   async rateLimitedRequest(requestFn) {
     const now = Date.now();
     
-    if (!RATE_LIMIT.lastRequestTime || (now - RATE_LIMIT.lastRequestTime) >= RATE_LIMIT.minRequestInterval) {
-      RATE_LIMIT.lastRequestTime = now;
-      return await requestFn();
+    // Clean up old requests
+    RATE_LIMIT.requestQueue = RATE_LIMIT.requestQueue.filter(
+      time => now - time < 60000
+    );
+    
+    // Check if we're over the limit
+    if (RATE_LIMIT.requestQueue.length >= RATE_LIMIT.requestsPerMinute) {
+      const oldestRequest = RATE_LIMIT.requestQueue[0];
+      const waitTime = 60000 - (now - oldestRequest);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
-    const delay = RATE_LIMIT.minRequestInterval - (now - RATE_LIMIT.lastRequestTime);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    RATE_LIMIT.lastRequestTime = Date.now();
+    // Add current request to queue
+    RATE_LIMIT.requestQueue.push(now);
     
+    // Execute request
     return await requestFn();
   }
 
   async testConnection() {
     try {
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [{
+        text: 'Respond with "LLM connection successful"'
+      }];
+
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent([{
-          role: 'user',
-          parts: [{ text: 'Respond with "LLM connection successful"' }]
-        }]);
+        return await this.model.generateContentStream({
+          model: 'gemini-2.5-pro',
+          config,
+          contents,
+        });
       });
 
-      const response = await result.response.text();
+      let response = '';
+      for await (const chunk of result) {
+        response += chunk.text;
+      }
+
       logger.info('✅ LLM connection test successful:', response);
       return true;
     } catch (error) {
@@ -103,14 +123,29 @@ export class LLMAgent {
     try {
       logger.info('🧠 LLMAgent executing task:', userQuery.substring(0, 100));
       
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [{
+        text: userQuery
+      }];
+
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent([{
-          role: 'user',
-          parts: [{ text: userQuery }]
-        }]);
+        return await this.model.generateContentStream({
+          model: 'gemini-2.5-pro',
+          config,
+          contents,
+        });
       });
-      
-      const response = await result.response.text();
+
+      let response = '';
+      for await (const chunk of result) {
+        response += chunk.text;
+      }
       
       return {
         content: response,
@@ -136,14 +171,29 @@ export class LLMAgent {
     try {
       logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task.substring(0, 100));
       
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [{
+        text: task
+      }];
+
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent([{
-          role: 'user',
-          parts: [{ text: task }]
-        }]);
+        return await this.model.generateContentStream({
+          model: 'gemini-2.5-pro',
+          config,
+          contents,
+        });
       });
-      
-      const response = await result.response.text();
+
+      let response = '';
+      for await (const chunk of result) {
+        response += chunk.text;
+      }
       
       // Store conversation for context
       this.storeConversation(agentName, task, response);
