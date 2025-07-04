@@ -176,91 +176,62 @@ export class LLMAgent {
    */
   async collaborateWithAgent(agentName, task, context = {}) {
     try {
-      logger.info('🤖 Starting LLM collaboration', {
-        agent: agentName,
-        promptPreview: task.substring(0, 100) + '...',
-        timestamp: new Date().toISOString()
-      });
-
-      const startTime = Date.now();
-      
-      // Stream collaboration start if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'llm_start',
-          agent: agentName,
-          message: 'Starting LLM collaboration...',
-          timestamp: new Date().toISOString()
-        });
+      if (!task || typeof task !== 'string') {
+        throw new Error('Task must be a non-empty string');
       }
 
-      // Call LLM with streaming if enabled
-      const response = await this.rateLimitedRequest(async () => {
+      logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task.substring(0, 100));
+      
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: task,
+            },
+          ],
+        },
+      ];
+
+      const result = await this.rateLimitedRequest(async () => {
         return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
-          config: {
-            thinkingConfig: {
-              thinkingBudget: -1,
-            },
-            responseMimeType: 'text/plain',
-          },
-          contents: [{ role: 'user', parts: [{ text: task }] }],
+          config,
+          contents,
         });
       });
 
-      const result = response.response;
-      const executionTime = Date.now() - startTime;
-
-      logger.info('✅ LLM collaboration completed', {
-        agent: agentName,
-        timeSpentMs: executionTime,
-        responsePreview: result.text().substring(0, 200) + '...',
-        timestamp: new Date().toISOString()
-      });
-
-      // Stream completion if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'llm_complete',
-          agent: agentName,
-          timeSpentMs: executionTime,
-          timestamp: new Date().toISOString()
-        });
+      let response = '';
+      for await (const chunk of result) {
+        if (chunk && chunk.text) {
+          response += chunk.text;
+        }
       }
-
+      
       // Store conversation for context
-      this.storeConversation(agentName, task, result.text());
+      this.storeConversation(agentName, task, response);
       
       return {
         agentCollaboration: agentName,
-        response: result.text(),
-        analysis: this.analyzeResponse(result.text(), agentName),
-        nextSteps: this.generateNextSteps(result.text(), agentName),
+        response: response || 'No response generated',
+        analysis: this.analyzeResponse(response || '', agentName),
+        nextSteps: this.generateNextSteps(response || '', agentName),
         metadata: {
           collaboratingAgent: agentName,
           model: 'gemini-2.5-pro',
-          timeSpentMs: executionTime,
           timestamp: new Date().toISOString()
         }
       };
       
     } catch (error) {
-      logger.error('❌ Error in LLM collaboration:', {
-        agent: agentName,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-
-      // Stream error if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'llm_error',
-          agent: agentName,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
-      }
-
+      logger.error(`❌ Error collaborating with ${agentName}:`, error);
       throw error;
     }
   }
@@ -270,106 +241,61 @@ export class LLMAgent {
    */
   async continueConversation(agentName, newPrompt, context = {}) {
     try {
-      logger.info('🔄 Continuing LLM conversation', {
-        agent: agentName,
-        promptPreview: newPrompt.substring(0, 100) + '...',
-        conversationTurn: context.conversationState?.conversationTurns || 1,
-        timestamp: new Date().toISOString()
-      });
-
-      const startTime = Date.now();
+      logger.info(`💬 Continuing conversation with ${agentName}`);
       
-      // Stream conversation continuation if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'conversation_continue',
-          agent: agentName,
-          turn: context.conversationState?.conversationTurns || 1,
-          timestamp: new Date().toISOString()
-        });
-      }
-
       // Get conversation history
       const history = this.getConversationHistory(agentName);
       
       // Build context-aware prompt
       const contextPrompt = this.buildContextualPrompt(newPrompt, history, context);
       
-      // Call LLM with conversation history
-      const response = await this.rateLimitedRequest(async () => {
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: contextPrompt,
+            },
+          ],
+        },
+      ];
+
+      const result = await this.rateLimitedRequest(async () => {
         return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
-          config: {
-            thinkingConfig: {
-              thinkingBudget: -1,
-            },
-            responseMimeType: 'text/plain',
-          },
-          contents: [
-            { role: 'user', parts: [{ text: contextPrompt }] },
-            { role: 'assistant', parts: [{ text: 'I understand your task. Let me help you with that.' }] },
-            { role: 'user', parts: [{ text: newPrompt }] }
-          ],
+          config,
+          contents,
         });
       });
 
-      const result = response.response;
-      const executionTime = Date.now() - startTime;
-
-      logger.info('✅ LLM conversation turn completed', {
-        agent: agentName,
-        timeSpentMs: executionTime,
-        turn: context.conversationState?.conversationTurns || 1,
-        responsePreview: result.text().substring(0, 200) + '...',
-        timestamp: new Date().toISOString()
-      });
-
-      // Stream completion if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'conversation_complete',
-          agent: agentName,
-          turn: context.conversationState?.conversationTurns || 1,
-          timeSpentMs: executionTime,
-          timestamp: new Date().toISOString()
-        });
+      let response = '';
+      for await (const chunk of result) {
+        response += chunk.text;
       }
-
+      
       // Update conversation history
-      this.updateConversationHistory(agentName, newPrompt, result.text());
+      this.updateConversationHistory(agentName, newPrompt, response);
       
       return {
-        response: result.text(),
+        response: response,
         conversationTurn: history.length + 1,
-        analysis: this.analyzeConversationProgress(history, result.text()),
+        analysis: this.analyzeConversationProgress(history, response),
         metadata: {
           agentName,
           conversationLength: history.length,
-          turn: context.conversationState?.conversationTurns || 1,
-          timeSpentMs: executionTime,
           timestamp: new Date().toISOString()
         }
       };
       
     } catch (error) {
-      logger.error('❌ Error in LLM conversation:', {
-        agent: agentName,
-        turn: context.conversationState?.conversationTurns || 1,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-
-      // Stream error if enabled
-      if (context.streamingEnabled && context.streamingCallback) {
-        context.streamingCallback({
-          type: 'conversation_error',
-          agent: agentName,
-          turn: context.conversationState?.conversationTurns || 1,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
-      }
-
+      logger.error(`❌ Error in conversation with ${agentName}:`, error);
       throw error;
     }
   }

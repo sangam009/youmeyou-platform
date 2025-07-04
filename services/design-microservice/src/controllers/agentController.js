@@ -62,32 +62,25 @@ class AgentController {
         });
       }
 
-      // Set response timeout to 2 minutes
-      res.setTimeout(120000, () => {
-        logger.warn('⚠️ Request timeout - sending partial response');
-        if (!res.headersSent) {
-          res.status(200).json({
-            status: 'partial',
-            message: 'Response timeout - partial results',
-            partial: true
-          });
-        }
-      });
-
+      // Configure response for streaming
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
       // Get current canvas and project context
       let projectId = canvasState?.projectId;
       if (!projectId && canvasState?.canvasId) {
         try {
           const canvas = await canvasService.getCanvas(canvasState.canvasId);
           projectId = canvas.projectId;
-          logger.info('📋 Retrieved canvas context:', { canvasId: canvasState.canvasId, projectId });
         } catch (error) {
           logger.warn('⚠️ Failed to get canvas:', error);
           projectId = 'default-project';
         }
       }
 
-      // Setup streaming context with detailed logging
+      // Setup streaming context with buffered write
       const streamingContext = {
         userId,
         projectId: projectId || 'default-project',
@@ -96,15 +89,9 @@ class AgentController {
         streamingCallback: (data) => {
           try {
             if (!res.headersSent) {
-              logger.info('📤 Streaming data chunk:', {
-                type: data.type,
-                timestamp: new Date().toISOString(),
-                dataPreview: JSON.stringify(data).substring(0, 200) + '...'
-              });
               res.write(JSON.stringify(data) + '\n');
-              logger.info('✅ Successfully wrote stream chunk');
             } else {
-              logger.warn('⚠️ Headers already sent, skipping stream chunk');
+              res.write(JSON.stringify(data) + '\n');
             }
           } catch (error) {
             logger.error('❌ Error writing stream chunk:', error);
@@ -112,42 +99,25 @@ class AgentController {
         }
       };
 
-      // Log streaming context setup
-      logger.info('🔄 Streaming context initialized:', {
-        userId,
-        projectId,
-        hasCanvasState: !!canvasState,
-        timestamp: new Date().toISOString()
-      });
-
-      // Configure response for streaming
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
-      logger.info('📡 Response headers set for streaming');
-      
       // Process the request
-      logger.info('🚀 Starting task processing with A2A service');
       const result = await a2aService.routeTask(content, streamingContext);
-      logger.info('✅ Task processing completed', {
-        resultPreview: JSON.stringify(result).substring(0, 200) + '...',
-        timestamp: new Date().toISOString()
-      });
 
-      // End the response
-      if (!res.headersSent) {
-        logger.info('🏁 Sending final response chunk');
-        res.write(JSON.stringify({ type: 'completion', data: result }) + '\n');
-      }
+      // Finalize response
+      res.write(JSON.stringify({ type: 'complete', result }) + '\n');
       res.end();
-      logger.info('✅ Response stream ended successfully');
+
+      logger.info('✅ askAgent request completed successfully', { result });
 
     } catch (error) {
       logger.error('❌ Error in askAgent:', error);
       if (!res.headersSent) {
         res.status(500).json({
           status: 'error',
-          message: error.message
+          message: 'Internal server error'
         });
+      } else {
+        res.write(JSON.stringify({ type: 'error', error: error.message }) + '\n');
+        res.end();
       }
     }
   }

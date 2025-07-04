@@ -404,6 +404,24 @@ This analysis was generated through iterative collaboration with AI to ensure co
     
     return actionableItems.slice(0, 5); // Limit to 5 actionable items
   }
+
+  async handleTask(task, context = {}) {
+    try {
+      logger.info('🎯 ProjectManager handling task:', task);
+      
+      // If streaming is enabled, use streaming execution
+      if (context.streamingEnabled && context.streamingCallback) {
+        return await this.executeWithStreaming(task, context);
+      }
+      
+      // Otherwise, use standard execution
+      return await this.execute(task, context);
+      
+    } catch (error) {
+      logger.error('❌ Error in ProjectManager handleTask:', error);
+      throw error;
+    }
+  }
 }
 
 export default ProjectManagerAgent; 

@@ -25,7 +25,8 @@ class A2AService {
       taskType: 'chat',
       hasCanvasState: !!context.canvasState,
       streamingEnabled: context.streamingEnabled,
-      timestamp: new Date(startTime).toISOString()
+      timestamp: new Date(startTime).toISOString(),
+      content
     });
 
     try {
@@ -38,15 +39,13 @@ class A2AService {
 
       // Route task through intelligent router
       const routingStartTime = Date.now();
-      logger.info('🧠 Starting task routing through IntelligentRouter');
       const routingResult = await this.intelligentRouter.routeTask(content, context);
       const routingTime = Date.now() - routingStartTime;
       
       logger.info('⏱️ Task routing completed', {
         timeSpentMs: routingTime,
         complexity: routingResult.complexity,
-        intent: routingResult.intent,
-        selectedAgents: routingResult.selectedAgents
+        intent: routingResult.intent
       });
       
       // Stream routing result
@@ -60,11 +59,6 @@ class A2AService {
 
       // Execute task with selected agent(s)
       const executionStartTime = Date.now();
-      logger.info('🚀 Starting task execution with orchestrator', {
-        complexity: routingResult.complexity,
-        taskType: 'chat'
-      });
-
       const result = await this.orchestrator.executeTask(content, {
         ...context,
         complexity: routingResult.complexity,
@@ -75,7 +69,7 @@ class A2AService {
       logger.info('⏱️ Task execution completed', {
         timeSpentMs: executionTime,
         totalTimeMs: Date.now() - startTime,
-        resultPreview: JSON.stringify(result).substring(0, 200) + '...'
+        result
       });
 
       // Stream completion
@@ -91,14 +85,8 @@ class A2AService {
       });
 
       return result;
-
     } catch (error) {
-      logger.error('❌ Error in task processing:', error);
-      this.streamUpdate(context, {
-        type: 'error',
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
+      logger.error('❌ Error during task processing:', error);
       throw error;
     }
   }
@@ -109,41 +97,14 @@ class A2AService {
   streamUpdate(context, data) {
     if (context.streamingEnabled && context.streamingCallback) {
       try {
-        // Add metadata to stream update
-        const enrichedData = {
+        logger.info('📡 Sending stream update:', data);
+        context.streamingCallback({
           ...data,
-          timestamp: new Date().toISOString(),
-          metadata: {
-            userId: context.userId,
-            projectId: context.projectId,
-            taskType: context.taskType || 'chat'
-          }
-        };
-
-        // Log before streaming
-        logger.info('📡 Preparing to stream update:', {
-          type: enrichedData.type,
-          progress: enrichedData.progress,
-          timestamp: enrichedData.timestamp
-        });
-
-        // Send the update
-        context.streamingCallback(enrichedData);
-        
-        // Log after successful streaming
-        logger.info('✅ Stream update sent successfully:', {
-          type: enrichedData.type,
-          dataPreview: JSON.stringify(enrichedData).substring(0, 200) + '...'
-        });
-      } catch (error) {
-        logger.error('❌ Error sending stream update:', {
-          error: error.message,
-          type: data.type,
           timestamp: new Date().toISOString()
         });
+      } catch (error) {
+        logger.warn('⚠️ Error sending stream update:', error);
       }
-    } else {
-      logger.warn('⚠️ No streaming callback available in context');
     }
   }
 

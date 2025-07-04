@@ -44,6 +44,8 @@ export class A2AStreamingService {
         throw new Error('Response body is null');
       }
 
+      console.log('📡 Streaming connection established');
+
       // Create a stream reader
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -72,6 +74,7 @@ export class A2AStreamingService {
         // Process each complete line
         for (const line of lines) {
           if (line.trim()) {
+            console.log('📡 Received stream chunk:', line);
             this.processStreamChunk(line, options);
           }
         }
