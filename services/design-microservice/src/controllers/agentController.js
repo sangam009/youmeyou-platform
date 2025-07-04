@@ -1,5 +1,6 @@
 import a2aService from '../services/a2aService.js';
 import logger from '../utils/logger.js';
+import canvasService from '../services/canvasService.js';
 
 class AgentController {
   async routeTask(req, res) {
@@ -60,8 +61,29 @@ class AgentController {
           message: 'Content is required'
         });
       }
+
+      // Get current canvas and project context
+      let projectId = canvasState?.projectId;
+      if (!projectId && canvasState?.canvasId) {
+        try {
+          const canvas = await canvasService.getCanvas(canvasState.canvasId);
+          if (canvas) {
+            projectId = canvas.projectId;
+            // Update canvasState with full canvas data
+            canvasState.projectId = projectId;
+            canvasState.currentDesign = canvas.content?.design;
+            canvasState.requirements = canvas.requirements;
+          }
+        } catch (error) {
+          logger.warn('⚠️ Failed to get canvas context:', error);
+        }
+      }
       
-      logger.info(`🔍 Processing agent request from user ${userId}: ${content.substring(0, 100)}...`);
+      logger.info(`🔍 Processing agent request from user ${userId} for project ${projectId}:`, {
+        contentPreview: content.substring(0, 100),
+        hasCanvasState: !!canvasState,
+        projectId
+      });
       
       // Check if client wants streaming response
       logger.info('📋 Request headers:', {
@@ -103,7 +125,7 @@ class AgentController {
         // Create streaming context
         const streamingContext = {
           userId,
-          projectId: canvasState?.projectId || 'default-project',
+          projectId: projectId || 'default-project',
           canvasState,
           streamingEnabled: true,
           streamingCallback: (progressData) => {

@@ -290,16 +290,24 @@ export class VectorDBService {
     }
 
     try {
+      // If projectId is not provided, try to get conversations for just the user
+      const where = {
+        userId,
+        type: 'conversation_turn'
+      };
+      
+      // Only add projectId to query if it's provided
+      if (projectId && projectId !== 'default-project') {
+        where.projectId = projectId;
+      }
+
       const results = await this.collections.conversations.query({
         queryTexts: ['recent conversation context'],
         nResults: limit,
-        where: {
-          userId,
-          projectId,
-          type: 'conversation_turn'
-        }
+        where
       });
 
+      logger.info(`📚 Retrieved conversation context for user ${userId}${projectId ? ` and project ${projectId}` : ''}`);
       return results.metadatas[0] || [];
     } catch (error) {
       logger.error('❌ Error getting conversation context:', error);
