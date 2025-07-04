@@ -16,57 +16,105 @@ class A2AService {
     logger.info('🚀 A2AService initialized with IntelligentTaskRouter and orchestrator');
   }
 
-  async routeTask(task) {
+  /**
+   * Route and execute task with intelligent agent selection
+   */
+  async routeTask(content, context) {
+    const startTime = Date.now();
+    logger.info('📤 Starting task processing', {
+      taskType: 'chat',
+      hasCanvasState: !!context.canvasState,
+      streamingEnabled: context.streamingEnabled,
+      timestamp: new Date(startTime).toISOString()
+    });
+
     try {
-      logger.info('🧠 Routing task through INTELLIGENT A2A service:', {
-        hasContent: !!task.content,
-        contentLength: task.content?.length || 0,
-        userId: task.userId,
-        hasCanvasState: !!task.canvasState
+      // Stream initial status
+      this.streamUpdate(context, {
+        type: 'status',
+        message: 'Analyzing task...',
+        progress: 0
       });
 
-      // Use intelligent routing - NO MORE CLIENT-PROVIDED TYPES!
-      // The system will analyze the prompt and determine complexity/routing
-      const result = await this.intelligentRouter.routeTask(
-        task.content, 
-        {
-          canvasState: task.canvasState,
-          userId: task.userId,
-          timestamp: new Date().toISOString()
-        }
-      );
-
-      // Format response for consistency with existing API
-      return {
-        agentId: result.executionType === 'complex' ? 'multi-agent-system' : 'single-agent-system',
-        agentName: result.executionType === 'complex' ? 'Multi-Agent AI System' : 'AI Assistant',
-        response: result.response,
-        executedAt: new Date(),
-        metadata: {
-          ...result.metadata,
-          executionType: result.executionType,
-          complexity: result.complexity,
-          intelligentRouting: true
-        }
-      };
-    } catch (error) {
-      logger.error('❌ Error in intelligent task routing:', error);
+      // Route task through intelligent router
+      const routingStartTime = Date.now();
+      const routingResult = await this.intelligentRouter.routeTask(content, context);
+      const routingTime = Date.now() - routingStartTime;
       
-      // Fallback to basic response
-      return {
-        agentId: 'fallback-system',
-        agentName: 'System Assistant',
-        response: {
-          content: 'I encountered an issue processing your request, but I\'m here to help! Could you try rephrasing your question?',
-          analysis: 'Error occurred during intelligent routing',
-          suggestions: ['Try a more specific question', 'Check your request format', 'Contact support if the issue persists']
-        },
-        executedAt: new Date(),
-        metadata: {
-          error: error.message,
-          fallbackMode: true
+      logger.info('⏱️ Task routing completed', {
+        timeSpentMs: routingTime,
+        complexity: routingResult.complexity,
+        intent: routingResult.intent
+      });
+      
+      // Stream routing result
+      this.streamUpdate(context, {
+        type: 'routing',
+        complexity: routingResult.complexity,
+        intent: routingResult.intent,
+        progress: 20,
+        timeSpentMs: routingTime
+      });
+
+      // Execute task with selected agent(s)
+      const executionStartTime = Date.now();
+      const result = await this.orchestrator.executeTask(content, {
+        ...context,
+        complexity: routingResult.complexity,
+        taskType: 'chat'
+      });
+      const executionTime = Date.now() - executionStartTime;
+
+      logger.info('⏱️ Task execution completed', {
+        timeSpentMs: executionTime,
+        totalTimeMs: Date.now() - startTime
+      });
+
+      // Stream completion
+      this.streamUpdate(context, {
+        type: 'complete',
+        result,
+        progress: 100,
+        timeSpentMs: {
+          routing: routingTime,
+          execution: executionTime,
+          total: Date.now() - startTime
         }
-      };
+      });
+
+      return result;
+    } catch (error) {
+      const errorTime = Date.now() - startTime;
+      logger.error('❌ Error in routeTask:', {
+        error: error.message,
+        timeSpentMs: errorTime
+      });
+      
+      // Stream error
+      this.streamUpdate(context, {
+        type: 'error',
+        message: error.message,
+        progress: -1,
+        timeSpentMs: errorTime
+      });
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to send streaming updates
+   */
+  streamUpdate(context, data) {
+    if (context.streamingEnabled && context.streamingCallback) {
+      try {
+        context.streamingCallback({
+          ...data,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        logger.warn('⚠️ Error sending stream update:', error);
+      }
     }
   }
 

@@ -15,15 +15,18 @@ import ProjectManagerAgent from './ProjectManagerAgent.js';
  */
 export class AgentOrchestrator {
   constructor() {
-    // Initialize individual agents (no A2A client needed)
-    this.architectureDesigner = new ArchitectureDesignerAgent();
-    this.databaseDesigner = new DatabaseDesignerAgent();
-    this.apiDesigner = new APIDesignerAgent();
-    this.codeGenerator = new CodeGeneratorAgent();
-    this.techLead = new TechLeadAgent();
-    this.projectManager = new ProjectManagerAgent();
+    // Initialize agents only once
+    if (!AgentOrchestrator.instance) {
+      this.projectManager = new ProjectManagerAgent();
+      this.architectureDesigner = new ArchitectureDesignerAgent();
+      
+      // Store the instance
+      AgentOrchestrator.instance = this;
+      
+      logger.info('🎯 AgentOrchestrator initialized with singleton agents');
+    }
     
-    logger.info('🎯 AgentOrchestrator initialized with all agents');
+    return AgentOrchestrator.instance;
   }
 
   /**
@@ -232,5 +235,55 @@ export class AgentOrchestrator {
     }
 
     return summary;
+  }
+
+  /**
+   * Execute task with appropriate agent(s)
+   */
+  async executeTask(content, context) {
+    const startTime = Date.now();
+    
+    try {
+      // For simple tasks, use project manager
+      if (context.complexity < 0.5) {
+        logger.info('🎯 Executing simple task with ProjectManager');
+        const result = await this.projectManager.handleTask(content, context);
+        
+        logger.info('⏱️ Simple task execution completed', {
+          timeSpentMs: Date.now() - startTime,
+          complexity: context.complexity
+        });
+        
+        return result;
+      }
+      
+      // For complex tasks, coordinate multiple agents
+      logger.info('🎯 Executing complex task with multiple agents');
+      
+      // Execute agents in parallel where possible
+      const [projectManagerResult, architectureResult] = await Promise.all([
+        this.projectManager.handleTask(content, context),
+        this.architectureDesigner.handleTask(content, context)
+      ]);
+      
+      // Combine results
+      const result = {
+        ...projectManagerResult,
+        architecture: architectureResult
+      };
+      
+      logger.info('⏱️ Complex task execution completed', {
+        timeSpentMs: Date.now() - startTime,
+        complexity: context.complexity
+      });
+      
+      return result;
+    } catch (error) {
+      logger.error('❌ Error in task execution:', {
+        error: error.message,
+        timeSpentMs: Date.now() - startTime
+      });
+      throw error;
+    }
   }
 }

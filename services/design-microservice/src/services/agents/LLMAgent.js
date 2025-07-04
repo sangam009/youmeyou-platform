@@ -548,4 +548,43 @@ Please provide your expert analysis and recommendations for this task.`;
       lastActivity: new Date().toISOString()
     };
   }
+
+  /**
+   * Generate content using Gemini
+   */
+  async generateContent(prompt, config = {}) {
+    const startTime = Date.now();
+    logger.info('🤖 Starting LLM content generation', {
+      promptLength: prompt.length,
+      config: config
+    });
+
+    try {
+      const contents = [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }];
+
+      const model = this.genAI.models.geminiPro();
+      const result = await model.generateContentStream({
+        contents,
+        ...config
+      });
+
+      const responseTime = Date.now() - startTime;
+      logger.info('⏱️ LLM generation completed', {
+        timeSpentMs: responseTime,
+        status: 'success'
+      });
+
+      return result;
+    } catch (error) {
+      const errorTime = Date.now() - startTime;
+      logger.error('❌ Error in LLM generation:', {
+        error: error.message,
+        timeSpentMs: errorTime
+      });
+      throw error;
+    }
+  }
 } 

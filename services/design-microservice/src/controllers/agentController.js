@@ -62,180 +62,64 @@ class AgentController {
         });
       }
 
+      // Set response timeout to 2 minutes
+      res.setTimeout(120000, () => {
+        logger.warn('⚠️ Request timeout - sending partial response');
+        if (!res.headersSent) {
+          res.status(200).json({
+            status: 'partial',
+            message: 'Response timeout - partial results',
+            partial: true
+          });
+        }
+      });
+
       // Get current canvas and project context
       let projectId = canvasState?.projectId;
       if (!projectId && canvasState?.canvasId) {
         try {
           const canvas = await canvasService.getCanvas(canvasState.canvasId);
-          if (canvas) {
-            projectId = canvas.projectId;
-            // Update canvasState with full canvas data
-            canvasState.projectId = projectId;
-            canvasState.currentDesign = canvas.content?.design;
-            canvasState.requirements = canvas.requirements;
-          }
+          projectId = canvas.projectId;
         } catch (error) {
-          logger.warn('⚠️ Failed to get canvas context:', error);
+          logger.warn('⚠️ Failed to get canvas:', error);
+          projectId = 'default-project';
         }
       }
-      
-      logger.info(`🔍 Processing agent request from user ${userId} for project ${projectId}:`, {
-        contentPreview: content.substring(0, 100),
-        hasCanvasState: !!canvasState,
-        projectId
-      });
-      
-      // Check if client wants streaming response
-      logger.info('📋 Request headers:', {
-        accept: req.headers.accept,
-        'accept-header': req.headers['accept'],
-        allHeaders: Object.keys(req.headers)
-      });
-      
-      const acceptsStream = req.headers.accept?.includes('text/stream') || 
-                           req.headers['accept']?.includes('application/stream+json') ||
-                           req.headers.accept?.includes('text/event-stream') ||
-                           req.query.stream === 'true';
-      
-      logger.info('📋 Streaming detection:', {
-        acceptsStream,
-        acceptHeader: req.headers.accept
-      });
-      
-      if (acceptsStream) {
-        // Set up streaming response
-        res.writeHead(200, {
-          'Content-Type': 'text/stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Cache-Control'
-        });
 
-        // Use intelligent routing with streaming
-        const task = {
-          type: 'chat',
-          content,
-          canvasState: canvasState || {},
-          userId,
-          agentId,
-          timestamp: new Date()
-        };
-        
-        // Create streaming context
-        const streamingContext = {
-          userId,
-          projectId: projectId || 'default-project',
-          canvasState,
-          streamingEnabled: true,
-          streamingCallback: (progressData) => {
-            res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+      // Setup streaming context
+      const streamingContext = {
+        userId,
+        projectId: projectId || 'default-project',
+        canvasState,
+        streamingEnabled: true,
+        streamingCallback: (data) => {
+          if (!res.headersSent) {
+            res.write(JSON.stringify(data) + '\n');
           }
-        };
-        
-        logger.info('📋 Created streaming context:', {
-          userId: streamingContext.userId,
-          projectId: streamingContext.projectId,
-          hasCanvasState: !!streamingContext.canvasState,
-          canvasStateKeys: streamingContext.canvasState ? Object.keys(streamingContext.canvasState) : []
-        });
-
-        try {
-          // Use intelligent routing to determine the best agent
-          const { IntelligentTaskRouter } = await import('../services/IntelligentTaskRouter.js');
-          const router = new IntelligentTaskRouter();
-          
-          // Stream initial routing analysis
-          res.write(`data: ${JSON.stringify({
-            type: 'routing_analysis',
-            status: 'Analyzing task and selecting optimal agent...',
-            completionScore: 5,
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-
-          // Route task and get selected agent - this will execute agents with streaming
-          const routingResult = await router.routeTask(content, streamingContext);
-          
-          // Stream agent selection
-          res.write(`data: ${JSON.stringify({
-            type: 'agent_selected',
-            agent: routingResult.executionType === 'complex' ? 'Multi-Agent System' : routingResult.agent || 'AI Assistant',
-            complexity: routingResult.complexity,
-            status: `Selected ${routingResult.executionType === 'complex' ? 'multi-agent collaboration' : 'single agent'} for this task`,
-            completionScore: 10,
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-
-          // The agents have already been executed with streaming during routeTask()
-          // Send final result
-          res.write(`data: ${JSON.stringify({
-            type: 'completed',
-            status: 'success',
-            data: {
-              agentId: routingResult.executionType === 'complex' ? 'multi-agent-system' : 'single-agent-system',
-              agentName: routingResult.executionType === 'complex' ? 'Multi-Agent AI System' : 'AI Assistant',
-              response: routingResult.response,
-              executedAt: new Date(),
-              metadata: {
-                ...routingResult.metadata,
-                executionType: routingResult.executionType,
-                complexity: routingResult.complexity,
-                streamingEnabled: true
-              }
-            },
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-          
-          res.end();
-        } catch (streamError) {
-          res.write(`data: ${JSON.stringify({
-            type: 'error',
-            status: 'error',
-            message: streamError.message,
-            timestamp: new Date().toISOString()
-          })}\n\n`);
-          res.end();
         }
-      } else {
-        // Regular non-streaming response
-        const task = {
-          type: 'chat',
-          content,
-          canvasState: canvasState || {},
-          userId,
-          agentId,
-          timestamp: new Date()
-        };
-        
-        logger.info('📤 Sending task to a2aService:', {
-          taskType: task.type,
-          hasCanvasState: !!task.canvasState,
-          agentId: task.agentId
-        });
+      };
 
-        const response = await a2aService.routeTask(task);
-        
-        logger.info('📥 Received response from a2aService:', {
-          hasResponse: !!response,
-          responseType: typeof response
-        });
-        
-        res.json({
-          status: 'success',
-          data: response
+      // Configure response for streaming
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      
+      // Process the request
+      const result = await a2aService.routeTask(content, streamingContext);
+      
+      // Send final response
+      if (!res.headersSent) {
+        res.end(JSON.stringify({ status: 'complete', result }) + '\n');
+      }
+
+    } catch (error) {
+      logger.error('❌ Error in askAgent:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          status: 'error',
+          message: 'Internal server error',
+          error: error.message
         });
       }
-    } catch (error) {
-      logger.error('❌ Error in askAgent:', {
-        error: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to process agent request',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
     }
   }
 
