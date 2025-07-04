@@ -274,14 +274,18 @@ export class VectorDBService {
     if (!this.isInitialized) return [];
 
     try {
+      const where = {
+        $and: [
+          { userId: { $eq: userId } },
+          { projectId: { $eq: projectId } },
+          { type: { $eq: 'conversation_turn' } }
+        ]
+      };
+
       const results = await this.collections.conversations.query({
         queryTexts: [query],
         nResults: limit,
-        where: {
-          userId,
-          projectId,
-          type: 'conversation_turn'
-        }
+        where
       });
 
       return results.metadatas[0] || [];
@@ -300,15 +304,17 @@ export class VectorDBService {
     }
 
     try {
-      // If projectId is not provided, try to get conversations for just the user
+      // ChromaDB requires where clause values to be arrays
       const where = {
-        userId,
-        type: 'conversation_turn'
+        $and: [
+          { userId: { $eq: userId } },
+          { type: { $eq: 'conversation_turn' } }
+        ]
       };
       
-      // Only add projectId to query if it's provided
+      // Only add projectId to query if it's provided and not default
       if (projectId && projectId !== 'default-project') {
-        where.projectId = projectId;
+        where.$and.push({ projectId: { $eq: projectId } });
       }
 
       const results = await this.collections.conversations.query({
@@ -332,14 +338,18 @@ export class VectorDBService {
     if (!this.isInitialized) return [];
 
     try {
+      const where = {
+        $and: [
+          { userId: { $eq: userId } },
+          { projectId: { $eq: projectId } },
+          { type: { $eq: 'canvas_action' } }
+        ]
+      };
+
       const results = await this.collections.canvasHistory.query({
         queryTexts: ['canvas updates'],
         nResults: limit,
-        where: {
-          userId,
-          projectId,
-          type: 'canvas_action'
-        }
+        where
       });
 
       return results.metadatas[0] || [];
@@ -357,13 +367,15 @@ export class VectorDBService {
 
     try {
       const where = {
-        userId,
-        projectId,
-        type: 'code_action'
+        $and: [
+          { userId: { $eq: userId } },
+          { projectId: { $eq: projectId } },
+          { type: { $eq: 'code_action' } }
+        ]
       };
 
       if (codeType) {
-        where.codeType = codeType;
+        where.$and.push({ codeType: { $eq: codeType } });
       }
 
       const results = await this.collections.codeHistory.query({
@@ -387,13 +399,15 @@ export class VectorDBService {
 
     try {
       const where = {
-        userId,
-        projectId,
-        type: 'agent_action'
+        $and: [
+          { userId: { $eq: userId } },
+          { projectId: { $eq: projectId } },
+          { type: { $eq: 'agent_action' } }
+        ]
       };
 
       if (agentName) {
-        where.agentName = agentName;
+        where.$and.push({ agentName: { $eq: agentName } });
       }
 
       const results = await this.collections.agentActions.query({
