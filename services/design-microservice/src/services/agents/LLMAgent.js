@@ -3,31 +3,31 @@ import logger from '../../utils/logger.js';
 
 // Rate limiting configuration
 const RATE_LIMIT = {
-  requestsPerMinute: 50, // Keep under 60 RPM limit for gemini-2.0-flash
+  requestsPerMinute: 50, // Keep under 60 RPM limit
   requestQueue: [],
   lastRequestTime: null,
   minRequestInterval: 60000 / 50, // Minimum time between requests in ms
 };
 
 /**
- * LLM Agent - Powered by Gemini 2.0 Flash for fast, reliable responses
+ * LLM Agent - Powered by Gemini Pro for reliable responses
  * This agent is used by specialized agents for LLM-powered tasks
  * Implements singleton pattern to prevent multiple instances
  */
 export class LLMAgent {
-  static instance = null;
+  static #instance = null;
 
   static getInstance() {
-    if (!LLMAgent.instance) {
-      LLMAgent.instance = new LLMAgent();
+    if (!LLMAgent.#instance) {
+      LLMAgent.#instance = new LLMAgent();
     }
-    return LLMAgent.instance;
+    return LLMAgent.#instance;
   }
 
   constructor() {
     // Prevent multiple instances
-    if (LLMAgent.instance) {
-      return LLMAgent.instance;
+    if (LLMAgent.#instance) {
+      return LLMAgent.#instance;
     }
 
     // Initialize Gemini LLM connection
@@ -37,22 +37,22 @@ export class LLMAgent {
 
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
     this.model = this.genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash',
+      model: 'gemini-pro',  // Using the stable pro model
       generationConfig: {
-        temperature: 0.9,    // Increased for more creative responses
-        topP: 0.9,          // Increased for more diverse outputs
+        temperature: 0.7,    // Balanced for reliability
+        topP: 0.8,          // Balanced for diversity
         topK: 40,           // Keep stable for reliability
-        maxOutputTokens: 4096, // Doubled for longer responses
+        maxOutputTokens: 2048, // Standard response length
       }
     });
     
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
     
-    logger.info('🤖 LLMAgent initialized with Gemini 2.0 Flash and real LLM connection');
+    logger.info('🤖 LLMAgent initialized with Gemini Pro and real LLM connection');
     this.testConnection();
 
-    LLMAgent.instance = this;
+    LLMAgent.#instance = this;
   }
 
   /**
@@ -109,7 +109,7 @@ export class LLMAgent {
         analysis: 'LLM-powered analysis completed',
         suggestions: this.extractSuggestions(response.text()),
         metadata: {
-          model: 'gemini-2.0-flash',
+          model: 'gemini-pro',
           tokens: response.text().length,
           timestamp: new Date().toISOString()
         }
@@ -148,7 +148,7 @@ export class LLMAgent {
         nextSteps: this.generateNextSteps(response.text(), agentName),
         metadata: {
           collaboratingAgent: agentName,
-          model: 'gemini-2.0-flash',
+          model: 'gemini-pro',
           timestamp: new Date().toISOString()
         }
       };
@@ -438,7 +438,7 @@ Please provide your expert analysis and recommendations for this task.`;
   getStatus() {
     return {
       status: 'active',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-pro',
       activeConversations: this.conversationHistory.size,
       capabilities: [
         'complex reasoning',

@@ -87,8 +87,8 @@ export class VectorDBService {
    * Store conversation turn with metadata
    */
   async storeConversationTurn(userId, projectId, turnData) {
-    if (!this.isInitialized) {
-      logger.warn('VectorDB not initialized, using fallback storage');
+    if (!this.isInitialized || !this.collections.conversations) {
+      logger.warn('VectorDB not initialized or collection unavailable, using fallback storage');
       return this.storeFallbackConversation(userId, projectId, turnData);
     }
 
@@ -106,19 +106,13 @@ export class VectorDBService {
       // Validate required fields
       if (!userMessage || !agentResponse) {
         logger.warn('Missing required fields for conversation turn storage');
-        return;
+        return this.storeFallbackConversation(userId, projectId, turnData);
       }
 
       const documentId = `${userId}_${projectId}_${turnNumber}_${timestamp}`;
       
       // Combine user message and agent response for semantic search
       const combinedText = `User: ${userMessage}\nAgent: ${agentResponse}`;
-      
-      // Ensure collections are available
-      if (!this.collections.conversations) {
-        logger.warn('Conversations collection not available, skipping storage');
-        return;
-      }
       
       await this.collections.conversations.add({
         ids: [documentId],
@@ -147,6 +141,8 @@ export class VectorDBService {
         projectId,
         turnData: turnData ? Object.keys(turnData) : 'undefined'
       });
+      // Use fallback storage on error
+      return this.storeFallbackConversation(userId, projectId, turnData);
     }
   }
 

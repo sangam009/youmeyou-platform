@@ -133,7 +133,7 @@ class ProjectManagerAgent extends ConversationalAgent {
 
       // Execute sub-task with LLM
       const { LLMAgent } = await import('./LLMAgent.js');
-      const llmAgent = new LLMAgent();
+      const llmAgent = LLMAgent.getInstance();
       
       const subTaskPrompt = `
 As a ${subTask.agent}, execute this specific task:
