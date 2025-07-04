@@ -69,16 +69,26 @@ export class VectorDBService {
   }
 
   async getOrCreateCollection(name, description) {
+    const embeddingFunction = {
+      generate: async (texts) => {
+        // Simple embedding function that returns a fixed-size vector for each text
+        // This is a temporary solution - in production you should use a proper embedding model
+        return texts.map(() => Array(1536).fill(0.1));
+      }
+    };
+
     try {
       return await this.client.getCollection({
-        name
+        name,
+        embeddingFunction
       });
     } catch (error) {
       // Collection doesn't exist, create it
       logger.info(`Creating new collection: ${name}`);
       return await this.client.createCollection({
         name,
-        metadata: { description }
+        metadata: { description },
+        embeddingFunction
       });
     }
   }
