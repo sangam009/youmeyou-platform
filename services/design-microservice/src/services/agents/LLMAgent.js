@@ -3,10 +3,10 @@ import logger from '../../utils/logger.js';
 
 // Rate limiting configuration
 const RATE_LIMIT = {
-  requestsPerMinute: 50, // Keep under 60 RPM limit
+  requestsPerMinute: 50,
   requestQueue: [],
   lastRequestTime: null,
-  minRequestInterval: 60000 / 50, // Minimum time between requests in ms
+  minRequestInterval: 60000 / 50,
 };
 
 /**
@@ -37,12 +37,12 @@ export class LLMAgent {
 
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
     this.model = this.genAI.getGenerativeModel({ 
-      model: 'gemini-pro',  // Using the stable pro model
+      model: 'gemini-2.5-pro',
       generationConfig: {
-        temperature: 0.7,    // Balanced for reliability
-        topP: 0.8,          // Balanced for diversity
-        topK: 40,           // Keep stable for reliability
-        maxOutputTokens: 2048, // Standard response length
+        temperature: 0.7,
+        topP: 0.8,
+        topK: 40,
+        maxOutputTokens: 2048,
       }
     });
     
@@ -61,16 +61,12 @@ export class LLMAgent {
   async rateLimitedRequest(requestFn) {
     const now = Date.now();
     
-    // If this is the first request or enough time has passed since last request
     if (!RATE_LIMIT.lastRequestTime || (now - RATE_LIMIT.lastRequestTime) >= RATE_LIMIT.minRequestInterval) {
       RATE_LIMIT.lastRequestTime = now;
       return await requestFn();
     }
     
-    // Calculate delay needed
     const delay = RATE_LIMIT.minRequestInterval - (now - RATE_LIMIT.lastRequestTime);
-    
-    // Wait for the required delay
     await new Promise(resolve => setTimeout(resolve, delay));
     RATE_LIMIT.lastRequestTime = Date.now();
     
@@ -79,37 +75,16 @@ export class LLMAgent {
 
   async testConnection() {
     try {
-      // More robust test prompt that validates model capabilities
-      const testPrompt = `You are a technical assistant. Please respond with a JSON object containing:
-1. A confirmation message
-2. The current timestamp
-3. A test calculation
-
-Format:
-{
-  "status": "LLM connection successful",
-  "timestamp": "<current_time>",
-  "calculation": "2 + 2 = 4"
-}`;
-
-      const testResult = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent(testPrompt);
+      const result = await this.rateLimitedRequest(async () => {
+        return await this.model.generateContent([{
+          role: 'user',
+          parts: [{ text: 'Respond with "LLM connection successful"' }]
+        }]);
       });
 
-      const response = testResult.response.text();
-      
-      // Validate response format
-      try {
-        const parsed = JSON.parse(response);
-        if (parsed.status && parsed.timestamp && parsed.calculation) {
-          logger.info('✅ LLM connection test successful:', parsed.status);
-          return true;
-        }
-      } catch (parseError) {
-        logger.error('❌ LLM connection test failed: Invalid response format');
-        return false;
-      }
-
+      const response = await result.response.text();
+      logger.info('✅ LLM connection test successful:', response);
+      return true;
     } catch (error) {
       logger.error('❌ LLM connection test failed:', error);
       if (error.message.includes('PERMISSION_DENIED')) {
@@ -128,23 +103,22 @@ Format:
     try {
       logger.info('🧠 LLMAgent executing task:', userQuery.substring(0, 100));
       
-      // Build enhanced prompt with context
-      const enhancedPrompt = this.buildEnhancedPrompt(userQuery, context);
-      
-      // Generate response with rate limiting
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent(enhancedPrompt);
+        return await this.model.generateContent([{
+          role: 'user',
+          parts: [{ text: userQuery }]
+        }]);
       });
       
-      const response = result.response;
+      const response = await result.response.text();
       
       return {
-        content: response.text(),
+        content: response,
         analysis: 'LLM-powered analysis completed',
-        suggestions: this.extractSuggestions(response.text()),
+        suggestions: this.extractSuggestions(response),
         metadata: {
-          model: 'gemini-pro',
-          tokens: response.text().length,
+          model: 'gemini-2.5-pro',
+          tokens: response.length,
           timestamp: new Date().toISOString()
         }
       };
@@ -162,27 +136,26 @@ Format:
     try {
       logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task.substring(0, 100));
       
-      // Build agent-specific prompt
-      const collaborationPrompt = this.buildCollaborationPrompt(agentName, task, context);
-      
-      // Generate response with rate limiting
       const result = await this.rateLimitedRequest(async () => {
-        return await this.model.generateContent(collaborationPrompt);
+        return await this.model.generateContent([{
+          role: 'user',
+          parts: [{ text: task }]
+        }]);
       });
       
-      const response = result.response;
+      const response = await result.response.text();
       
       // Store conversation for context
-      this.storeConversation(agentName, task, response.text());
+      this.storeConversation(agentName, task, response);
       
       return {
         agentCollaboration: agentName,
-        response: response.text(),
-        analysis: this.analyzeResponse(response.text(), agentName),
-        nextSteps: this.generateNextSteps(response.text(), agentName),
+        response: response,
+        analysis: this.analyzeResponse(response, agentName),
+        nextSteps: this.generateNextSteps(response, agentName),
         metadata: {
           collaboratingAgent: agentName,
-          model: 'gemini-pro',
+          model: 'gemini-2.5-pro',
           timestamp: new Date().toISOString()
         }
       };
@@ -472,7 +445,7 @@ Please provide your expert analysis and recommendations for this task.`;
   getStatus() {
     return {
       status: 'active',
-      model: 'gemini-pro',
+      model: 'gemini-2.5-pro',
       activeConversations: this.conversationHistory.size,
       capabilities: [
         'complex reasoning',
