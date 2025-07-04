@@ -12,7 +12,6 @@ export class A2AStreamingService {
   private baseUrl: string;
 
   constructor() {
-    // Use HTTP-based streaming instead of A2A SDK to avoid server-side dependencies
     this.baseUrl = config.api.designService;
   }
 
@@ -20,70 +19,77 @@ export class A2AStreamingService {
     try {
       console.log('🔄 Starting streaming execution:', task);
       
-      // Use streaming API with ndjson format
-      const response = await fetch(`${this.baseUrl}/agents/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/x-ndjson',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          content: task.prompt,
-          type: task.type || 'general',
-          canvasState: { projectId: task.canvasId },
-          architecture: task.architecture
-        })
+      // Create EventSource for server-sent events
+      const eventSource = new EventSource(`${this.baseUrl}/agents/ask`, {
+        withCredentials: true
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      console.log('📡 Streaming connection established');
-
-      // Create a stream reader
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Process the stream
-      while (true) {
-        const { done, value } = await reader.read();
+      // Handle connection established
+      eventSource.addEventListener('connected', (event) => {
+        console.log('📡 Streaming connection established');
         
-        if (done) {
-          // Process any remaining data in buffer
-          if (buffer) {
-            this.processStreamChunk(buffer, options);
+        // Send task data
+        fetch(`${this.baseUrl}/agents/ask`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            content: task.prompt,
+            type: task.type || 'general',
+            canvasState: { projectId: task.canvasId },
+            architecture: task.architecture
+          })
+        }).catch(error => {
+          console.error('❌ Error sending task data:', error);
+          if (options.onError) {
+            options.onError(error);
           }
-          break;
+          eventSource.close();
+        });
+      });
+
+      // Handle streaming messages
+      eventSource.addEventListener('message', (event) => {
+        try {
+          console.log('📡 Received stream event:', event.data);
+          const data = JSON.parse(event.data);
+          this.processStreamChunk(data, options);
+        } catch (error) {
+          console.warn('⚠️ Error processing stream chunk:', error);
         }
+      });
 
-        // Decode the chunk and add to buffer
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        // Process complete lines
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
-
-        // Process each complete line
-        for (const line of lines) {
-          if (line.trim()) {
-            console.log('📡 Received stream chunk:', line);
-            this.processStreamChunk(line, options);
+      // Handle completion
+      eventSource.addEventListener('complete', (event) => {
+        try {
+          console.log('✅ Stream completed:', event.data);
+          const data = JSON.parse(event.data);
+          if (options.onComplete) {
+            options.onComplete(data.result);
           }
+        } catch (error) {
+          console.warn('⚠️ Error processing completion:', error);
+        } finally {
+          eventSource.close();
         }
-      }
+      });
 
-      // Signal completion
-      if (options.onComplete) {
-        options.onComplete({ status: 'completed' });
-      }
+      // Handle errors
+      eventSource.addEventListener('error', (event) => {
+        console.error('❌ Stream error:', event);
+        if (options.onError) {
+          options.onError(event);
+        }
+        eventSource.close();
+      });
+
+      // Clean up on unmount
+      return () => {
+        console.log('🧹 Cleaning up streaming connection');
+        eventSource.close();
+      };
 
     } catch (error) {
       console.error('❌ Streaming execution error:', error);
@@ -94,10 +100,8 @@ export class A2AStreamingService {
     }
   }
 
-  private processStreamChunk(chunk: string, options: StreamingOptions) {
+  private processStreamChunk(data: any, options: StreamingOptions) {
     try {
-      const data = JSON.parse(chunk);
-      
       // Handle progress updates
       if (data.type === 'progress' && options.onProgress) {
         options.onProgress(data.progress);

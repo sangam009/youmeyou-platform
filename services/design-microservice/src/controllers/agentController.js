@@ -63,10 +63,15 @@ class AgentController {
       }
 
       // Configure response for streaming
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no' // Disable nginx buffering
+      });
+
+      // Send initial heartbeat to establish connection
+      res.write('event: connected\ndata: {"status":"connected"}\n\n');
       
       // Get current canvas and project context
       let projectId = canvasState?.projectId;
@@ -88,11 +93,14 @@ class AgentController {
         streamingEnabled: true,
         streamingCallback: (data) => {
           try {
-            if (!res.headersSent) {
-              res.write(JSON.stringify(data) + '\n');
-            } else {
-              res.write(JSON.stringify(data) + '\n');
-            }
+            const eventData = JSON.stringify(data);
+            logger.info('📡 Sending stream event:', {
+              type: data.type,
+              dataLength: eventData.length,
+              preview: eventData.substring(0, 100) + '...'
+            });
+            
+            res.write(`event: message\ndata: ${eventData}\n\n`);
           } catch (error) {
             logger.error('❌ Error writing stream chunk:', error);
           }
@@ -102,23 +110,27 @@ class AgentController {
       // Process the request
       const result = await a2aService.routeTask(content, streamingContext);
 
-      // Finalize response
-      res.write(JSON.stringify({ type: 'complete', result }) + '\n');
+      // Send completion event
+      const completionData = JSON.stringify({ type: 'complete', result });
+      res.write(`event: complete\ndata: ${completionData}\n\n`);
       res.end();
 
       logger.info('✅ askAgent request completed successfully', { result });
 
     } catch (error) {
       logger.error('❌ Error in askAgent:', error);
+      const errorData = JSON.stringify({ type: 'error', error: error.message });
+      
       if (!res.headersSent) {
-        res.status(500).json({
-          status: 'error',
-          message: 'Internal server error'
+        res.writeHead(500, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
         });
-      } else {
-        res.write(JSON.stringify({ type: 'error', error: error.message }) + '\n');
-        res.end();
       }
+      
+      res.write(`event: error\ndata: ${errorData}\n\n`);
+      res.end();
     }
   }
 

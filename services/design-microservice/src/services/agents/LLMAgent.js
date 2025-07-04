@@ -180,7 +180,7 @@ export class LLMAgent {
         throw new Error('Task must be a non-empty string');
       }
 
-      logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task.substring(0, 100));
+      logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task);
       
       const config = {
         thinkingConfig: {
@@ -200,7 +200,13 @@ export class LLMAgent {
         },
       ];
 
-      const result = await this.rateLimitedRequest(async () => {
+      logger.info(`📤 Sending request to LLM for ${agentName}:`, {
+        model: 'gemini-2.5-pro',
+        config,
+        contents: contents.map(c => ({ ...c, parts: c.parts.map(p => p.text) }))
+      });
+
+      const streamResult = await this.rateLimitedRequest(async () => {
         return await this.genAI.models.generateContentStream({
           model: 'gemini-2.5-pro',
           config,
@@ -209,16 +215,29 @@ export class LLMAgent {
       });
 
       let response = '';
-      for await (const chunk of result) {
+      let chunkCount = 0;
+      for await (const chunk of streamResult) {
         if (chunk && chunk.text) {
           response += chunk.text;
+          chunkCount++;
+          logger.info(`📥 Received chunk ${chunkCount} from LLM:`, {
+            chunkText: chunk.text.substring(0, 100) + '...',
+            chunkLength: chunk.text.length,
+            totalResponseLength: response.length
+          });
         }
       }
+      
+      logger.info(`✅ LLM collaboration complete for ${agentName}:`, {
+        responseLength: response.length,
+        totalChunks: chunkCount,
+        previewResponse: response.substring(0, 200) + '...'
+      });
       
       // Store conversation for context
       this.storeConversation(agentName, task, response);
       
-      return {
+      const collaborationResult = {
         agentCollaboration: agentName,
         response: response || 'No response generated',
         analysis: this.analyzeResponse(response || '', agentName),
@@ -226,9 +245,19 @@ export class LLMAgent {
         metadata: {
           collaboratingAgent: agentName,
           model: 'gemini-2.5-pro',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          chunkCount,
+          responseLength: response.length
         }
       };
+
+      logger.info(`📊 Collaboration result for ${agentName}:`, {
+        analysis: collaborationResult.analysis,
+        nextSteps: collaborationResult.nextSteps,
+        metadata: collaborationResult.metadata
+      });
+
+      return collaborationResult;
       
     } catch (error) {
       logger.error(`❌ Error collaborating with ${agentName}:`, error);
