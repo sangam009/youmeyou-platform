@@ -2,6 +2,7 @@
   "name": "designmicroservice",
   "version": "1.0.0",
   "type": "module",
+  "description": "Design Microservice for YouMeYou Platform",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -10,16 +11,17 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@a2a-js/sdk": "^0.2.2",
     "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^0.1.0",
     "axios": "^1.9.0",
     "chromadb": "^1.7.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
+    "mime": "^3.0.0",
     "mongodb": "^6.16.0",
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
@@ -28,6 +30,10 @@
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
     "winston": "^3.10.0",
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
   }
 }
