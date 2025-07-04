@@ -79,11 +79,45 @@ export class LLMAgent {
 
   async testConnection() {
     try {
-      const testResult = await this.model.generateContent("Hello, please respond with 'LLM connection successful'");
+      // More robust test prompt that validates model capabilities
+      const testPrompt = `You are a technical assistant. Please respond with a JSON object containing:
+1. A confirmation message
+2. The current timestamp
+3. A test calculation
+
+Format:
+{
+  "status": "LLM connection successful",
+  "timestamp": "<current_time>",
+  "calculation": "2 + 2 = 4"
+}`;
+
+      const testResult = await this.rateLimitedRequest(async () => {
+        return await this.model.generateContent(testPrompt);
+      });
+
       const response = testResult.response.text();
-      logger.info('✅ LLM connection test successful:', response.substring(0, 50));
+      
+      // Validate response format
+      try {
+        const parsed = JSON.parse(response);
+        if (parsed.status && parsed.timestamp && parsed.calculation) {
+          logger.info('✅ LLM connection test successful:', parsed.status);
+          return true;
+        }
+      } catch (parseError) {
+        logger.error('❌ LLM connection test failed: Invalid response format');
+        return false;
+      }
+
     } catch (error) {
-      logger.error('❌ LLM connection test failed:', error.message);
+      logger.error('❌ LLM connection test failed:', error);
+      if (error.message.includes('PERMISSION_DENIED')) {
+        logger.error('🔑 API key validation failed. Please check your GOOGLE_AI_KEY.');
+      } else if (error.message.includes('RESOURCE_EXHAUSTED')) {
+        logger.error('⚠️ API quota exceeded. Please check your usage limits.');
+      }
+      return false;
     }
   }
 
