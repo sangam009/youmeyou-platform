@@ -86,9 +86,16 @@ export class LLMAgent {
         responseMimeType: 'text/plain',
       };
 
-      const contents = [{
-        text: 'Respond with "LLM connection successful"'
-      }];
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: 'Respond with "LLM connection successful"',
+            },
+          ],
+        },
+      ];
 
       const result = await this.rateLimitedRequest(async () => {
         return await this.model.generateContentStream({
@@ -130,9 +137,16 @@ export class LLMAgent {
         responseMimeType: 'text/plain',
       };
 
-      const contents = [{
-        text: userQuery
-      }];
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: userQuery,
+            },
+          ],
+        },
+      ];
 
       const result = await this.rateLimitedRequest(async () => {
         return await this.model.generateContentStream({
@@ -178,9 +192,16 @@ export class LLMAgent {
         responseMimeType: 'text/plain',
       };
 
-      const contents = [{
-        text: task
-      }];
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: task,
+            },
+          ],
+        },
+      ];
 
       const result = await this.rateLimitedRequest(async () => {
         return await this.model.generateContentStream({
@@ -229,17 +250,44 @@ export class LLMAgent {
       // Build context-aware prompt
       const contextPrompt = this.buildContextualPrompt(newPrompt, history, context);
       
-      // Generate response
-      const result = await this.model.generateContent(contextPrompt);
-      const response = result.response;
+      const config = {
+        thinkingConfig: {
+          thinkingBudget: -1,
+        },
+        responseMimeType: 'text/plain',
+      };
+
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: contextPrompt,
+            },
+          ],
+        },
+      ];
+
+      const result = await this.rateLimitedRequest(async () => {
+        return await this.model.generateContentStream({
+          model: 'gemini-2.5-pro',
+          config,
+          contents,
+        });
+      });
+
+      let response = '';
+      for await (const chunk of result) {
+        response += chunk.text;
+      }
       
       // Update conversation history
-      this.updateConversationHistory(agentName, newPrompt, response.text());
+      this.updateConversationHistory(agentName, newPrompt, response);
       
       return {
-        response: response.text(),
+        response: response,
         conversationTurn: history.length + 1,
-        analysis: this.analyzeConversationProgress(history, response.text()),
+        analysis: this.analyzeConversationProgress(history, response),
         metadata: {
           agentName,
           conversationLength: history.length,
