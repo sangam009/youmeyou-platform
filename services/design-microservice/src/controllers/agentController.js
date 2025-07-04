@@ -80,44 +80,73 @@ class AgentController {
         try {
           const canvas = await canvasService.getCanvas(canvasState.canvasId);
           projectId = canvas.projectId;
+          logger.info('📋 Retrieved canvas context:', { canvasId: canvasState.canvasId, projectId });
         } catch (error) {
           logger.warn('⚠️ Failed to get canvas:', error);
           projectId = 'default-project';
         }
       }
 
-      // Setup streaming context
+      // Setup streaming context with detailed logging
       const streamingContext = {
         userId,
         projectId: projectId || 'default-project',
         canvasState,
         streamingEnabled: true,
         streamingCallback: (data) => {
-          if (!res.headersSent) {
-            res.write(JSON.stringify(data) + '\n');
+          try {
+            if (!res.headersSent) {
+              logger.info('📤 Streaming data chunk:', {
+                type: data.type,
+                timestamp: new Date().toISOString(),
+                dataPreview: JSON.stringify(data).substring(0, 200) + '...'
+              });
+              res.write(JSON.stringify(data) + '\n');
+              logger.info('✅ Successfully wrote stream chunk');
+            } else {
+              logger.warn('⚠️ Headers already sent, skipping stream chunk');
+            }
+          } catch (error) {
+            logger.error('❌ Error writing stream chunk:', error);
           }
         }
       };
 
+      // Log streaming context setup
+      logger.info('🔄 Streaming context initialized:', {
+        userId,
+        projectId,
+        hasCanvasState: !!canvasState,
+        timestamp: new Date().toISOString()
+      });
+
       // Configure response for streaming
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
+      logger.info('📡 Response headers set for streaming');
       
       // Process the request
+      logger.info('🚀 Starting task processing with A2A service');
       const result = await a2aService.routeTask(content, streamingContext);
-      
-      // Send final response
+      logger.info('✅ Task processing completed', {
+        resultPreview: JSON.stringify(result).substring(0, 200) + '...',
+        timestamp: new Date().toISOString()
+      });
+
+      // End the response
       if (!res.headersSent) {
-        res.end(JSON.stringify({ status: 'complete', result }) + '\n');
+        logger.info('🏁 Sending final response chunk');
+        res.write(JSON.stringify({ type: 'completion', data: result }) + '\n');
       }
+      res.end();
+      logger.info('✅ Response stream ended successfully');
 
     } catch (error) {
       logger.error('❌ Error in askAgent:', error);
       if (!res.headersSent) {
         res.status(500).json({
           status: 'error',
-          message: 'Internal server error',
-          error: error.message
+          message: error.message
         });
       }
     }
