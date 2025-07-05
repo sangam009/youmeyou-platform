@@ -231,7 +231,7 @@ async function initializeServices() {
     
     // Initialize LLM connection - SINGLE TEST ONLY
     logger.info('🤖 Initializing LLM connection (ONE-TIME TEST)...');
-    await LLMAgent.initializeConnection();
+    await LLMAgent.getInstance().initialize();
     
     logger.info('✅ All services initialized successfully');
     return true;
