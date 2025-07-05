@@ -23,7 +23,7 @@ import authMiddleware from './middleware/auth.js';
 
 // Import services that need initialization
 import { vectorDB } from './services/VectorDBService.js';
-import { a2aService } from './services/a2aService.js';
+import a2aService from './services/a2aService.js';
 import { LLMAgent } from './services/agents/LLMAgent.js';
 
 const app = express();

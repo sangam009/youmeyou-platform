@@ -158,14 +158,17 @@ export class LLMAgent {
       return LLMAgent.#instance;
     }
 
-    // Initialize Gemini LLM connection
+    // Check for API key but don't fail if missing (allow service to start)
     if (!GOOGLE_GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY or GOOGLE_AI_KEY environment variable is required for LLMAgent');
+      logger.warn('⚠️ [LLM INIT] GEMINI_API_KEY or GOOGLE_AI_KEY environment variable not found');
+      logger.warn('⚠️ [LLM INIT] LLM functionality will be disabled until API key is provided');
+      this.apiKeyMissing = true;
+    } else {
+      this.apiKeyMissing = false;
+      this.genAI = generateGoogleGeminiClient();
+      this.model = getGeminiFlashModel(); // Use flash model by default for quota management
+      this.flashModel = getGeminiFlashModel(); // Faster model for simple tasks
     }
-
-    this.genAI = generateGoogleGeminiClient();
-    this.model = getGeminiFlashModel(); // Use flash model by default for quota management
-    this.flashModel = getGeminiFlashModel(); // Faster model for simple tasks
     
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
@@ -191,6 +194,14 @@ export class LLMAgent {
     
     // Get singleton instance
     const instance = LLMAgent.getInstance();
+    
+    // Check if API key is missing
+    if (instance.apiKeyMissing) {
+      logger.warn('⚠️ [LLM INIT] Cannot test connection - API key missing');
+      connectionTested = true;
+      connectionStatus = false;
+      return false;
+    }
     
     // Delay to avoid quota issues during startup
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -292,6 +303,23 @@ export class LLMAgent {
    */
   async execute(userQuery, context = {}) {
     try {
+      // Check if API key is missing
+      if (this.apiKeyMissing) {
+        logger.warn('⚠️ [LLM EXECUTE] LLM execution skipped - API key missing');
+        return {
+          content: 'LLM functionality is currently unavailable due to missing API key. Please configure GEMINI_API_KEY environment variable.',
+          analysis: 'API key missing - LLM disabled',
+          suggestions: ['Configure GEMINI_API_KEY environment variable', 'Restart the service after adding the API key'],
+          metadata: {
+            model: 'none',
+            tokens: 0,
+            timestamp: new Date().toISOString(),
+            callCount: 0,
+            status: 'api_key_missing'
+          }
+        };
+      }
+
       logger.info('🧠 [LLM EXECUTE] LLMAgent executing task:', {
         queryLength: userQuery.length,
         queryPreview: userQuery.substring(0, 100) + '...',
@@ -336,6 +364,25 @@ export class LLMAgent {
     try {
       if (!task || typeof task !== 'string') {
         throw new Error('Task must be a non-empty string');
+      }
+
+      // Check if API key is missing
+      if (this.apiKeyMissing) {
+        logger.warn(`⚠️ [LLM COLLAB] LLM collaboration skipped for ${agentName} - API key missing`);
+        return {
+          agentCollaboration: agentName,
+          response: `LLM functionality is currently unavailable for ${agentName} due to missing API key. Please configure GEMINI_API_KEY environment variable.`,
+          analysis: 'API key missing - LLM disabled',
+          nextSteps: ['Configure GEMINI_API_KEY environment variable', 'Restart the service after adding the API key'],
+          metadata: {
+            collaboratingAgent: agentName,
+            model: 'none',
+            timestamp: new Date().toISOString(),
+            responseLength: 0,
+            callCount: 0,
+            status: 'api_key_missing'
+          }
+        };
       }
 
       logger.info(`🤝 [LLM COLLAB] LLMAgent collaborating with ${agentName}:`, {
