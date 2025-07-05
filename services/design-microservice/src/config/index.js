@@ -16,7 +16,7 @@ export const config = {
     codebertEndpoint: process.env.CODEBERT_ENDPOINT || 'http://cpu-models-service:8000/codebert'
   },
   googleAI: {
-    apiKey: process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY
+    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY
   },
   cors: {
     origins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
