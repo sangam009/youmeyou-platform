@@ -211,16 +211,22 @@ Provide analysis in this JSON format:
     try {
       logger.info('🤖 Using LLM for intelligent sub-task generation');
       
+      // Safely handle analysis properties
+      const requiredSkills = analysis.requiredSkills || [];
+      const intent = analysis.intent || 'general';
+      const complexity = analysis.complexity || 0.5;
+      const estimatedSteps = analysis.estimatedSteps || 1;
+      
       const subTaskPrompt = `
 As an expert project manager, break down this complex technical request into logical sub-tasks:
 
 REQUEST: "${prompt}"
 
 ANALYSIS CONTEXT:
-- Complexity: ${analysis.complexity}
-- Intent: ${analysis.intent}
-- Required Skills: ${analysis.requiredSkills.join(', ')}
-- Estimated Steps: ${analysis.estimatedSteps}
+- Complexity: ${complexity}
+- Intent: ${intent}
+- Required Skills: ${requiredSkills.length > 0 ? requiredSkills.join(', ') : 'general'}
+- Estimated Steps: ${estimatedSteps}
 
 Please generate a JSON array of sub-tasks with this structure:
 {
@@ -431,12 +437,19 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
    */
   async handleComplexTask(prompt, analysis, context) {
     logger.info('🧠 Executing complex task with multi-agent collaboration');
-    logger.info('📋 Sub-tasks identified:', analysis.subTasks.map(t => t.description));
+    
+    // Safely handle subTasks - it might be undefined or empty
+    const subTasks = analysis.subTasks || [];
+    const requiredSkills = analysis.requiredSkills || [];
+    
+    logger.info('📋 Sub-tasks identified:', subTasks.map(t => t.description || 'No description'));
     logger.info('📋 Complex task context before enhancement:', {
       hasUserId: !!context.userId,
       hasProjectId: !!context.projectId,
       userId: context.userId,
-      projectId: context.projectId
+      projectId: context.projectId,
+      subTaskCount: subTasks.length,
+      requiredSkillsCount: requiredSkills.length
     });
     
     try {
@@ -450,8 +463,8 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
         ...context,
         complexity: analysis.complexity,
         taskType: analysis.taskType,
-        subTasks: analysis.subTasks,
-        requiredSkills: analysis.requiredSkills,
+        subTasks: subTasks,
+        requiredSkills: requiredSkills,
         userId: context.userId || 'default-user',
         projectId: context.projectId || 'default-project'
       };
@@ -474,12 +487,12 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
         executionType: 'complex',
         complexity: analysis.complexity,
         agents: selectedAgents,
-        subTasks: analysis.subTasks,
+        subTasks: subTasks,
         response: {
           content: result.summary || 'Complex task completed with multi-agent collaboration',
           analysis: result.analysis || 'Complex task analysis completed',
           suggestions: result.suggestions || [],
-          steps: this.generateExecutionSteps(analysis.subTasks, result)
+          steps: this.generateExecutionSteps(subTasks, result)
         },
         metadata: {
           executionTime: Date.now(),
@@ -500,13 +513,56 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
    * Select single agent for simple tasks
    */
   selectAgentForSimpleTask(analysis) {
-    // Priority-based agent selection
-    if (analysis.requiredSkills.includes('architecture')) return 'architectureDesigner';
-    if (analysis.requiredSkills.includes('database')) return 'databaseDesigner';
-    if (analysis.requiredSkills.includes('api')) return 'apiDesigner';
-    if (analysis.intent === 'creation') return 'codeGenerator';
+    // Safely handle requiredSkills - it might be undefined or empty
+    const requiredSkills = analysis.requiredSkills || [];
+    const intent = analysis.intent || 'general';
+    
+    logger.info('🎯 Selecting agent for simple task:', {
+      intent,
+      requiredSkills,
+      complexity: analysis.complexity,
+      hasRequiredSkills: requiredSkills.length > 0
+    });
+    
+    // Priority-based agent selection with safe array access
+    if (requiredSkills.includes('architecture') || requiredSkills.includes('system_design')) {
+      logger.info('🏗️ Selected architectureDesigner for architecture/system design');
+      return 'architectureDesigner';
+    }
+    
+    if (requiredSkills.includes('database') || requiredSkills.includes('data_modeling')) {
+      logger.info('🗄️ Selected databaseDesigner for database tasks');
+      return 'databaseDesigner';
+    }
+    
+    if (requiredSkills.includes('api') || requiredSkills.includes('rest_api') || requiredSkills.includes('integration')) {
+      logger.info('🔌 Selected apiDesigner for API tasks');
+      return 'apiDesigner';
+    }
+    
+    if (intent === 'creation' || requiredSkills.includes('coding') || requiredSkills.includes('implementation')) {
+      logger.info('⚡ Selected codeGenerator for creation/coding tasks');
+      return 'codeGenerator';
+    }
+    
+    // Intent-based selection when requiredSkills is empty
+    if (intent === 'architecture_design' || intent === 'system_design') {
+      logger.info('🏗️ Selected architectureDesigner based on intent');
+      return 'architectureDesigner';
+    }
+    
+    if (intent === 'database_design' || intent === 'data_modeling') {
+      logger.info('🗄️ Selected databaseDesigner based on intent');
+      return 'databaseDesigner';
+    }
+    
+    if (intent === 'api_design' || intent === 'integration') {
+      logger.info('🔌 Selected apiDesigner based on intent');
+      return 'apiDesigner';
+    }
     
     // Default to project manager for general queries
+    logger.info('👨‍💼 Selected projectManager as default for general queries');
     return 'projectManager';
   }
 
@@ -570,20 +626,41 @@ Example: ["projectManager", "architectureDesigner", "databaseDesigner"]
   }
 
   selectAgentsFromAnalysis(analysis) {
+    // Safely handle requiredSkills - it might be undefined or empty
+    const requiredSkills = analysis.requiredSkills || [];
+    const intent = analysis.intent || 'general';
     const agents = [];
     
-    // Add agents based on required skills
-    if (analysis.requiredSkills.includes('architecture')) {
+    logger.info('🎯 Selecting agents from analysis:', {
+      intent,
+      requiredSkills,
+      complexity: analysis.complexity,
+      hasRequiredSkills: requiredSkills.length > 0
+    });
+    
+    // Add agents based on required skills with safe array access
+    if (requiredSkills.includes('architecture') || requiredSkills.includes('system_design')) {
       agents.push('architectureDesigner');
     }
-    if (analysis.requiredSkills.includes('database')) {
+    if (requiredSkills.includes('database') || requiredSkills.includes('data_modeling')) {
       agents.push('databaseDesigner');
     }
-    if (analysis.requiredSkills.includes('api')) {
+    if (requiredSkills.includes('api') || requiredSkills.includes('rest_api') || requiredSkills.includes('integration')) {
       agents.push('apiDesigner');
     }
-    if (analysis.intent === 'creation' || analysis.requiredSkills.includes('backend') || analysis.requiredSkills.includes('frontend')) {
+    if (intent === 'creation' || requiredSkills.includes('backend') || requiredSkills.includes('frontend') || requiredSkills.includes('coding')) {
       agents.push('codeGenerator');
+    }
+    
+    // Intent-based selection when requiredSkills is empty
+    if (intent === 'architecture_design' || intent === 'system_design') {
+      agents.push('architectureDesigner');
+    }
+    if (intent === 'database_design' || intent === 'data_modeling') {
+      agents.push('databaseDesigner');
+    }
+    if (intent === 'api_design' || intent === 'integration') {
+      agents.push('apiDesigner');
     }
     
     // Always add tech lead for complex multi-agent tasks
@@ -596,18 +673,34 @@ Example: ["projectManager", "architectureDesigner", "databaseDesigner"]
     
     // Remove duplicates and ensure we have at least one agent
     const uniqueAgents = [...new Set(agents)];
-    return uniqueAgents.length > 0 ? uniqueAgents : ['projectManager'];
+    const finalAgents = uniqueAgents.length > 0 ? uniqueAgents : ['projectManager'];
+    
+    logger.info('✅ Selected agents from analysis:', finalAgents);
+    return finalAgents;
   }
 
   /**
    * Generate execution steps for complex tasks
    */
   generateExecutionSteps(subTasks, result) {
+    // Safely handle subTasks - it might be undefined or empty
+    if (!subTasks || subTasks.length === 0) {
+      logger.info('📋 No sub-tasks available, generating default execution step');
+      return [{
+        step: 1,
+        id: 'default-step',
+        description: 'Task completed successfully',
+        agent: 'projectManager',
+        status: 'completed',
+        output: 'Task execution completed'
+      }];
+    }
+    
     return subTasks.map((task, index) => ({
       step: index + 1,
-      id: task.id,
-      description: task.description,
-      agent: task.agent,
+      id: task.id || `step-${index + 1}`,
+      description: task.description || `Step ${index + 1}`,
+      agent: task.agent || 'projectManager',
       status: 'completed',
       output: `Step ${index + 1} completed successfully`
     }));
