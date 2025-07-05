@@ -3,7 +3,7 @@ import logger from '../../utils/logger.js';
 
 // Rate limiting configuration with call counter
 const RATE_LIMIT = {
-  requestsPerMinute: 100, // Higher limit for gemini-1.0-pro
+  requestsPerMinute: 100, // Higher limit for gemini models
   requestQueue: [],
   lastRequestTime: null,
   minRequestInterval: 60000 / 100,
@@ -12,10 +12,11 @@ const RATE_LIMIT = {
   resetTime: Date.now() + 60000
 };
 
-// Gemini model configuration
+// Gemini model configuration - Updated to use available models
 const GOOGLE_GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
-const GEMINI_PRO_MODEL = "gemini-1.0-pro";
-const GEMINI_PRO_VISION_MODEL = "gemini-pro-vision";
+const GEMINI_PRO_MODEL = "gemini-1.5-pro"; // Updated to available model
+const GEMINI_FLASH_MODEL = "gemini-1.5-flash"; // Faster alternative
+const GEMINI_PRO_VISION_MODEL = "gemini-1.5-pro"; // Vision capabilities
 let genAI = null;
 
 function generateGoogleGeminiClient() {
@@ -29,12 +30,16 @@ function getGeminiProModel() {
     return genAI.getGenerativeModel({ model: GEMINI_PRO_MODEL });
 }
 
+function getGeminiFlashModel() {
+    return genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+}
+
 function getGeminiProVisionModel() {
     return genAI.getGenerativeModel({ 
         model: GEMINI_PRO_VISION_MODEL, 
         generationConfig: { 
-            "temperature": 0.2, 
-            maxOutputTokens: 1000000 
+            temperature: 0.2, 
+            maxOutputTokens: 8192 // Updated to realistic limit
         } 
     });
 }
@@ -83,7 +88,7 @@ function getPromptResponse(model, prompt) {
 }
 
 /**
- * LLM Agent - Powered by Gemini Pro for reliable responses with higher rate limits
+ * LLM Agent - Powered by Gemini 1.5 Pro for reliable responses with higher rate limits
  * This agent is used by specialized agents for LLM-powered tasks
  * Implements singleton pattern to prevent multiple instances
  */
@@ -110,11 +115,12 @@ export class LLMAgent {
 
     this.genAI = generateGoogleGeminiClient();
     this.model = getGeminiProModel();
+    this.flashModel = getGeminiFlashModel(); // Faster model for simple tasks
     
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
     
-    logger.info('🤖 LLMAgent initialized with Gemini 1.0 Pro and higher rate limits');
+    logger.info('🤖 LLMAgent initialized with Gemini 1.5 Pro and Flash models');
     this.testConnection();
 
     LLMAgent.#instance = this;
@@ -168,6 +174,17 @@ export class LLMAgent {
     try {
       logger.info('🔍 Testing LLM connection...');
       
+      // First, try to list available models for debugging
+      try {
+        const models = await this.genAI.listModels();
+        logger.info('📋 Available models:', {
+          models: models.map(m => m.name),
+          count: models.length
+        });
+      } catch (listError) {
+        logger.warn('⚠️ Could not list models:', listError.message);
+      }
+      
       const result = await this.rateLimitedRequest(async () => {
         return await getPromptResponse(this.model, 'Respond with "LLM connection successful"');
       });
@@ -180,6 +197,28 @@ export class LLMAgent {
         logger.error('🔑 API key validation failed. Please check your GEMINI_API_KEY.');
       } else if (error.message.includes('RESOURCE_EXHAUSTED')) {
         logger.error('⚠️ API quota exceeded. Please check your usage limits.');
+      } else if (error.message.includes('404') || error.message.includes('not found')) {
+        logger.error('🔍 Model not found. Trying fallback model...');
+        // Try with flash model as fallback
+        try {
+          const fallbackResult = await getPromptResponse(this.flashModel, 'Respond with "LLM fallback connection successful"');
+          logger.info('✅ LLM fallback connection successful:', fallbackResult);
+          this.model = this.flashModel; // Use flash model as primary
+          return true;
+        } catch (fallbackError) {
+          logger.error('❌ Fallback model also failed:', fallbackError);
+          
+          // Try with legacy gemini-pro model as last resort
+          try {
+            const legacyModel = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+            const legacyResult = await getPromptResponse(legacyModel, 'Respond with "LLM legacy connection successful"');
+            logger.info('✅ LLM legacy connection successful:', legacyResult);
+            this.model = legacyModel; // Use legacy model as primary
+            return true;
+          } catch (legacyError) {
+            logger.error('❌ Legacy model also failed:', legacyError);
+          }
+        }
       }
       return false;
     }
@@ -193,7 +232,8 @@ export class LLMAgent {
       logger.info('🧠 LLMAgent executing task:', {
         queryLength: userQuery.length,
         queryPreview: userQuery.substring(0, 100) + '...',
-        contextKeys: Object.keys(context)
+        contextKeys: Object.keys(context),
+        model: this.model.model
       });
       
       const result = await this.rateLimitedRequest(async () => {
@@ -213,7 +253,7 @@ export class LLMAgent {
         analysis: 'LLM-powered analysis completed',
         suggestions: this.extractSuggestions(JSON.stringify(response)),
         metadata: {
-          model: GEMINI_PRO_MODEL,
+          model: this.model.model,
           tokens: JSON.stringify(response).length,
           timestamp: new Date().toISOString(),
           callCount: RATE_LIMIT.totalCalls
@@ -238,7 +278,8 @@ export class LLMAgent {
       logger.info(`🤝 LLMAgent collaborating with ${agentName}:`, {
         taskLength: task.length,
         taskPreview: task.substring(0, 200) + '...',
-        contextKeys: Object.keys(context)
+        contextKeys: Object.keys(context),
+        model: this.model.model
       });
 
       const result = await this.rateLimitedRequest(async () => {
@@ -264,7 +305,7 @@ export class LLMAgent {
         nextSteps: this.generateNextSteps(responseText, agentName),
         metadata: {
           collaboratingAgent: agentName,
-          model: GEMINI_PRO_MODEL,
+          model: this.model.model,
           timestamp: new Date().toISOString(),
           responseLength: responseText.length,
           callCount: RATE_LIMIT.totalCalls
