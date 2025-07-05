@@ -36,7 +36,7 @@ export class LLMAgent {
 
     try {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
+      const apiKey = config.googleAI.apiKey;
       
       if (!apiKey) {
         logger.warn('⚠️ No Google AI API key found, LLM will run in mock mode');
