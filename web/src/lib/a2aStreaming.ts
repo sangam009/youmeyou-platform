@@ -1,5 +1,5 @@
 import { config } from '../config';
-import logger from './logger';
+import logger from '@/lib/logger';
 
 export interface StreamingOptions {
   onProgress?: (progress: number) => void;
@@ -50,11 +50,27 @@ export class A2AStreamingService {
     });
   }
 
-  static setupEventSource(url: string, options: StreamingOptions = {}): EventSource {
-    this.resetStats();
-    
+  public static setupEventSource(url: string, options: StreamingOptions = {}): EventSource {
     const eventSource = new EventSource(url);
 
+    // Reset stats for new connection
+    this.resetStats();
+    this.stats.startTime = Date.now();
+
+    // Handle connection open
+    eventSource.onopen = () => {
+      logger.info('🔌 EventSource connection opened');
+    };
+
+    // Handle errors
+    eventSource.onerror = (error) => {
+      logger.error('❌ EventSource error:', error);
+      if (options.onError) {
+        options.onError(error);
+      }
+    };
+
+    // Handle messages
     eventSource.onmessage = (event) => {
       try {
         // Update stats
@@ -62,48 +78,52 @@ export class A2AStreamingService {
         this.stats.bytesReceived += event.data.length;
         this.stats.lastMessageTime = Date.now();
 
-        // Log every 10th message for performance
-        if (this.stats.messagesReceived % 10 === 0) {
-          this.logStats();
+        // Parse message data
+        const data = JSON.parse(event.data);
+        
+        // Call message handler if provided
+        if (options.onMessage) {
+          options.onMessage(data);
         }
 
-        const data = JSON.parse(event.data);
-        logger.debug('📥 Received streaming message:', {
-          type: data.type,
-          messageNumber: this.stats.messagesReceived,
-          timestamp: new Date().toISOString()
-        });
+        // Handle progress updates
+        if (data.progress && options.onProgress) {
+          options.onProgress(data.progress);
+        }
 
-        options.onMessage?.(data);
+        // Handle canvas updates
+        if (data.canvasData && options.onCanvasUpdate) {
+          options.onCanvasUpdate(data.canvasData);
+        }
+
+        // Handle code updates
+        if (data.codeData && options.onCodeUpdate) {
+          options.onCodeUpdate(data.codeData);
+        }
+
+        // Handle completion
+        if (data.type === 'complete' && options.onComplete) {
+          options.onComplete(data);
+          eventSource.close();
+        }
+
       } catch (error) {
-        logger.error('❌ Error processing stream message:', {
-          error,
-          rawData: event.data
-        });
-        options.onError?.(error);
+        logger.error('❌ Error processing message:', error);
+        if (options.onError) {
+          options.onError(error);
+        }
       }
     };
-
-    eventSource.onerror = (error) => {
-      logger.error('❌ Stream connection error:', error);
-      this.logStats(); // Log final stats on error
-      options.onError?.(error);
-      eventSource.close();
-    };
-
-    eventSource.addEventListener('complete', () => {
-      logger.info('✅ Stream completed successfully');
-      this.logStats(); // Log final stats on completion
-      options.onComplete?.();
-      eventSource.close();
-    });
 
     return eventSource;
   }
 
   async startStreamingExecution(task: any, options: StreamingOptions = {}) {
     try {
-      logger.info('🔄 Starting streaming execution:', task);
+      logger.info('🔄 Starting streaming execution:', {
+        task,
+        baseUrl: this.baseUrl
+      });
       
       // Prepare the POST data
       const postData = {
@@ -114,10 +134,24 @@ export class A2AStreamingService {
         streamingEnabled: true
       };
 
+      // Construct the URL properly based on whether baseUrl is relative or absolute
+      const urlStr = this.baseUrl.startsWith('http') 
+        ? `${this.baseUrl}/agents/ask` // Absolute URL
+        : `${window.location.origin}${this.baseUrl}/agents/ask`; // Relative URL
+      
       // Create EventSource URL with data in query params
-      const url = new URL(`${this.baseUrl}/agents/ask`);
+      const url = new URL(urlStr);
       url.searchParams.append('data', JSON.stringify(postData));
       
+      logger.info('📡 Constructed streaming URL:', {
+        fullUrl: url.toString(),
+        baseUrl: this.baseUrl,
+        pathname: url.pathname,
+        searchParams: Object.fromEntries(url.searchParams),
+        protocol: url.protocol,
+        host: url.host
+      });
+
       // Create EventSource with the URL
       const eventSource = A2AStreamingService.setupEventSource(url.toString(), options);
 
