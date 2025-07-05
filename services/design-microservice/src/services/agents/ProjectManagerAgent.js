@@ -4,7 +4,7 @@ import { vectorDB } from '../VectorDBService.js';
 import { actionExecutor } from '../ActionExecutor.js';
 import { LLMDrivenTaskAnalyzer } from './LLMDrivenTaskAnalyzer.js';
 
-class ProjectManagerAgent extends ConversationalAgent {
+export class ProjectManagerAgent extends ConversationalAgent {
   constructor() {
     super('Project Manager', 'Senior Project Manager');
     this.streamingEnabled = true; // Enable A2A streaming

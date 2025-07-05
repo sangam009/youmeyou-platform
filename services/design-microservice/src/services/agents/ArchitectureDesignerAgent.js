@@ -1,6 +1,6 @@
 import { config } from '../../config/index.js';
 import logger from '../../utils/logger.js';
-import { LLMAgent } from '../../agents/LLMAgent.js';
+import { LLMAgent } from '../LLMAgent.js';
 
 /**
  * Architecture Designer Agent

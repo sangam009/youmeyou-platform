@@ -1,5 +1,5 @@
 import logger from '../../utils/logger.js';
-import { LLMAgent } from './LLMAgent.js';
+import { LLMAgent } from '../LLMAgent.js';
 
 /**
  * LLM-Driven Task Analyzer

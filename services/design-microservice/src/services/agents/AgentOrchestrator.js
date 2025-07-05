@@ -1,15 +1,15 @@
 import { config } from '../../config/index.js';
 import logger from '../../utils/logger.js';
+import { LLMAgent } from '../LLMAgent.js';
+import { LLMDrivenTaskAnalyzer } from './LLMDrivenTaskAnalyzer.js';
+import { ProjectManagerAgent } from './ProjectManagerAgent.js';
+import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
 
 // Import individual agents - fix imports to match actual exports
-import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
 import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
 import APIDesignerAgent from './APIDesignerAgent.js';
 import CodeGeneratorAgent from './CodeGeneratorAgent.js';
 import TechLeadAgent from './TechLeadAgent.js';
-import ProjectManagerAgent from './ProjectManagerAgent.js';
-import LLMAgent from './LLMAgent.js';
-import LLMDrivenTaskAnalyzer from './LLMDrivenTaskAnalyzer.js';
 
 /**
  * Orchestrates multi-agent collaboration with optimized LLM usage
