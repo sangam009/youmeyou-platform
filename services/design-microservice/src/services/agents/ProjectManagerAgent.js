@@ -95,27 +95,68 @@ export class ProjectManagerAgent extends ConversationalAgent {
       timestamp: new Date().toISOString()
     }, context);
 
-    // Step 1: LLM-POWERED task division
-    this.streamProgress({
-      type: 'task_analysis',
-      agent: this.agentName,
-      status: 'Analyzing task complexity and dividing into sub-tasks...',
-      completionScore: 10,
-      timestamp: new Date().toISOString()
-    }, context);
+    try {
+      // Step 1: Initial task analysis
+      const taskPrompt = `
+As a Senior Project Manager, analyze this task and provide a detailed response:
 
-    const taskDivision = await this.taskAnalyzer.divideTaskIntoSubtasks(userQuery, context);
-    
-    // Validate task division result
-    if (!taskDivision || !Array.isArray(taskDivision.subTasks)) {
-      logger.warn('⚠️ Invalid task division result, using fallback');
+TASK: "${userQuery}"
+
+Please provide:
+1. Task analysis and scope
+2. Key requirements and deliverables
+3. Technical considerations
+4. Implementation approach
+5. Potential challenges and solutions
+
+Format your response in a clear, structured way.`;
+
+      const { LLMAgent } = await import('./LLMAgent.js');
+      const llmAgent = LLMAgent.getInstance();
+      
+      // Stream analysis status
+      this.streamProgress({
+        type: 'task_analysis',
+        agent: this.agentName,
+        status: 'Analyzing task requirements...',
+        completionScore: 20,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      const llmResponse = await llmAgent.collaborateWithAgent(
+        this.agentName,
+        taskPrompt,
+        streamingContext
+      );
+
+      // Store conversation in VectorDB
+      await vectorDB.storeConversationTurn(userId, projectId, {
+        turnNumber: 1,
+        userMessage: userQuery,
+        agentResponse: llmResponse.response,
+        agentName: this.agentName,
+        completionScore: 0.8,
+        context: { conversationContext },
+        timestamp: new Date().toISOString()
+      });
+
+      // Stream completion
+      this.streamProgress({
+        type: 'agent_complete',
+        agent: this.agentName,
+        status: 'Analysis completed successfully',
+        completionScore: 100,
+        timestamp: new Date().toISOString()
+      }, context);
+
+      // Return structured response
       return {
         agentId: 'project-manager',
         agentName: this.agentName,
         response: {
-          content: `I've analyzed your request: "${userQuery}"\n\nI'll help you with this task.`,
-          analysis: 'Simple task execution',
-          suggestions: []
+          content: llmResponse.response,
+          analysis: userQuery,
+          suggestions: llmResponse.nextSteps || []
         },
         executedAt: new Date(),
         metadata: {
@@ -123,164 +164,35 @@ export class ProjectManagerAgent extends ConversationalAgent {
           executionType: 'simple'
         }
       };
-    }
 
-    this.streamProgress({
-      type: 'task_division_complete',
-      agent: this.agentName,
-      status: `Task divided into ${taskDivision.subTasks.length} sub-tasks`,
-      completionScore: 20,
-      subTasks: taskDivision.subTasks.length,
-      timestamp: new Date().toISOString()
-    }, context);
-
-    // Step 2: Execute sub-tasks with LLM-driven progress evaluation
-    const results = [];
-    let overallCompletion = 0;
-
-    for (let i = 0; i < taskDivision.subTasks.length; i++) {
-      const subTask = taskDivision.subTasks[i];
+    } catch (error) {
+      logger.error('❌ Error in ProjectManager streaming execution:', error);
       
-      // Validate sub-task structure
-      if (!subTask || typeof subTask !== 'object') {
-        logger.warn(`⚠️ Invalid sub-task at index ${i}, skipping`);
-        continue;
-      }
-
+      // Stream error status
       this.streamProgress({
-        type: 'subtask_start',
+        type: 'error',
         agent: this.agentName,
-        status: `Executing sub-task ${i + 1}/${taskDivision.subTasks.length}: ${subTask.title || 'Untitled Task'}`,
-        completionScore: 20 + (i * 15),
-        currentTask: subTask.title || 'Untitled Task',
+        status: `Error: ${error.message}`,
+        error: error.message,
         timestamp: new Date().toISOString()
       }, context);
 
-      // Execute sub-task with LLM
-      const { LLMAgent } = await import('./LLMAgent.js');
-      const llmAgent = LLMAgent.getInstance();
-      
-      // Safely construct sub-task prompt
-      const subTaskPrompt = `
-As a ${subTask.agent || 'project manager'}, execute this specific task:
-
-TASK: ${subTask.title || 'Execute task'}
-DESCRIPTION: ${subTask.description || userQuery}
-${subTask.deliverables ? `DELIVERABLES: ${Array.isArray(subTask.deliverables) ? subTask.deliverables.join(', ') : subTask.deliverables}` : ''}
-${subTask.acceptanceCriteria ? `ACCEPTANCE CRITERIA: ${Array.isArray(subTask.acceptanceCriteria) ? subTask.acceptanceCriteria.join(', ') : subTask.acceptanceCriteria}` : ''}
-
-Please provide a comprehensive response that addresses all requirements.
-`;
-
-      const llmResponse = await llmAgent.collaborateWithAgent(
-        subTask.agent || this.agentName,
-        subTaskPrompt,
-        { ...streamingContext, subTask }
-      );
-
-      // Store conversation turn in VectorDB
-      await vectorDB.storeConversationTurn(userId, projectId, {
-        turnNumber: i + 1,
-        userMessage: subTask.description || userQuery,
-        agentResponse: llmResponse.response,
-        agentName: subTask.agent || this.agentName,
-        completionScore: 0.5,
-        context: { subTask, conversationContext },
-        timestamp: new Date().toISOString()
-      });
-
-      // Parse and execute actions from LLM response
-      const actions = actionExecutor.parseActionsFromLLMResponse(llmResponse.response);
-      const actionResults = [];
-      
-      for (const action of actions) {
-        try {
-          const result = await actionExecutor.executeAction(userId, projectId, {
-            ...action,
-            agentName: subTask.agent || this.agentName
-          }, { ...context, subTask });
-          actionResults.push(result);
-        } catch (error) {
-          logger.error(`❌ Action execution failed:`, error);
-          actionResults.push({ error: error.message });
+      // Return error response
+      return {
+        agentId: 'project-manager',
+        agentName: this.agentName,
+        response: {
+          content: 'I apologize, but I encountered an error while processing your request. Please try again.',
+          analysis: 'Error occurred during processing',
+          suggestions: ['Try rephrasing your request', 'Break down the task into smaller parts']
+        },
+        executedAt: new Date(),
+        metadata: {
+          error: error.message,
+          executionType: 'error'
         }
-      }
-
-      // LLM-POWERED progress evaluation
-      const progressEvaluation = await this.taskAnalyzer.evaluateTaskProgress(
-        llmResponse.response,
-        subTask.description || userQuery,
-        { ...context, subTask, actionResults }
-      );
-
-      // LLM-POWERED missing elements detection
-      const missingElements = await this.taskAnalyzer.detectMissingElements(
-        llmResponse.response,
-        subTask.description || userQuery,
-        { ...context, subTask }
-      );
-
-      results.push({
-        subTask,
-        response: llmResponse.response,
-        completionScore: progressEvaluation.completionScore,
-        missingElements: missingElements.missingElements,
-        conversationTurns: 1
-      });
-
-      overallCompletion += progressEvaluation.completionScore / taskDivision.subTasks.length;
-
-      this.streamProgress({
-        type: 'subtask_complete',
-        agent: this.agentName,
-        status: `Sub-task ${i + 1} completed (${Math.round(progressEvaluation.completionScore * 100)}%)`,
-        completionScore: 20 + ((i + 1) * 15),
-        currentTask: subTask.title || 'Untitled Task',
-        timestamp: new Date().toISOString()
-      }, context);
+      };
     }
-
-    // Step 3: Compile final response
-    this.streamProgress({
-      type: 'compilation',
-      agent: this.agentName,
-      status: 'Compiling final response from all sub-tasks...',
-      completionScore: 90,
-      timestamp: new Date().toISOString()
-    }, context);
-
-    const finalResponse = this.compileSubTaskResults(results, taskDivision, userQuery);
-
-    this.streamProgress({
-      type: 'agent_complete',
-      agent: this.agentName,
-      completionScore: Math.round(overallCompletion * 100),
-      status: `Project completed! (${Math.round(overallCompletion * 100)}%)`,
-      timestamp: new Date().toISOString()
-    }, context);
-
-    return {
-      agentId: 'llm-driven-project-manager',
-      agentName: 'LLM-Driven Project Manager',
-      response: {
-        content: finalResponse,
-        analysis: `Task divided into ${taskDivision.subTasks.length} sub-tasks`,
-        suggestions: taskDivision.successMetrics || [],
-        subTasks: results.map(r => ({
-          title: r.subTask.title || 'Untitled Task',
-          completion: Math.round(r.completionScore * 100),
-          missingElements: Array.isArray(r.missingElements) ? r.missingElements.length : 0
-        }))
-      },
-      executedAt: new Date(),
-      metadata: {
-        taskAnalysis: taskDivision.taskAnalysis || {},
-        subTaskCount: taskDivision.subTasks.length,
-        overallCompletion: Math.round(overallCompletion * 100),
-        llmDriven: true,
-        executionType: 'llm-driven-subtask-execution'
-      }
-    };
   }
 
   /**

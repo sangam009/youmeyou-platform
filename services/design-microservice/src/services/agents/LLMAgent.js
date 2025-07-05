@@ -2,15 +2,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../../utils/logger.js';
 import { apiMonitor } from '../../utils/apiMonitor.js';
 
-// Rate limiting configuration with call counter
+// Constants
+const GEMINI_MODEL = 'gemini-1.5-flash';
 const RATE_LIMIT = {
-  requestsPerMinute: 15, // Reduced for free tier
-  requestQueue: [],
-  lastRequestTime: null,
-  minRequestInterval: 60000 / 15,
+  maxCallsPerMinute: 60,
   totalCalls: 0,
-  callsThisMinute: 0,
-  resetTime: Date.now() + 60000
+  lastReset: Date.now()
 };
 
 // Gemini model configuration - Updated to use available models
@@ -144,13 +141,37 @@ export class LLMAgent {
   static batchTimeout = null;
   static BATCH_DELAY = 100; // ms
   static CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  static conversationHistory = new Map();
 
   constructor() {
     if (LLMAgent.instance) {
       return LLMAgent.instance;
     }
-    this.model = null;
-    this.initialized = false;
+
+    // Initialize immediately in constructor
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+    
+    if (!apiKey) {
+      logger.warn('⚠️ No Gemini API key found (GEMINI_API_KEY), LLM will run in mock mode');
+      this.apiKeyMissing = true;
+      this.model = null;
+      this.initialized = false;
+    } else {
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        this.model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+        this.initialized = true;
+        this.apiKeyMissing = false;
+        logger.info(`🤖 LLMAgent initialized with ${GEMINI_MODEL}`);
+      } catch (error) {
+        logger.error('❌ Failed to initialize LLM in constructor:', error);
+        this.model = null;
+        this.initialized = false;
+        this.apiKeyMissing = true;
+      }
+    }
+
+    this.conversationHistory = new Map();
     LLMAgent.instance = this;
   }
 
@@ -162,29 +183,35 @@ export class LLMAgent {
   }
 
   /**
-   * Initialize LLM connection
+   * Initialize or reinitialize LLM connection
    */
   async initialize() {
-    if (this.initialized) return;
+    if (this.initialized && this.model) {
+      logger.info('🔄 LLM already initialized');
+      return;
+    }
 
     try {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
       
       if (!apiKey) {
-        logger.warn('⚠️ No Google AI API key found, LLM will run in mock mode');
+        logger.warn('⚠️ No Gemini API key found (GEMINI_API_KEY), LLM will run in mock mode');
+        this.apiKeyMissing = true;
         return;
       }
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      this.model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      this.model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
       this.initialized = true;
+      this.apiKeyMissing = false;
       
-      logger.info('🤖 GoogleGenerativeAI client created');
-      logger.info('🤖 [LLM INIT] LLMAgent initialized with Gemini 1.5 Flash (quota-optimized) - NO AUTO TEST');
+      logger.info(`🤖 LLMAgent reinitialized with ${GEMINI_MODEL}`);
 
     } catch (error) {
       logger.error('❌ Failed to initialize LLM:', error);
+      this.model = null;
+      this.initialized = false;
+      this.apiKeyMissing = true;
       throw error;
     }
   }
