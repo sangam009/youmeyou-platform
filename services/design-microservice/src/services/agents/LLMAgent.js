@@ -1,12 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../../utils/logger.js';
+import { apiMonitor } from '../../utils/apiMonitor.js';
 
 // Rate limiting configuration with call counter
 const RATE_LIMIT = {
-  requestsPerMinute: 100, // Higher limit for gemini models
+  requestsPerMinute: 15, // Reduced for free tier
   requestQueue: [],
   lastRequestTime: null,
-  minRequestInterval: 60000 / 100,
+  minRequestInterval: 60000 / 15,
   totalCalls: 0,
   callsThisMinute: 0,
   resetTime: Date.now() + 60000
@@ -14,14 +15,19 @@ const RATE_LIMIT = {
 
 // Gemini model configuration - Updated to use available models
 const GOOGLE_GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
-const GEMINI_PRO_MODEL = "gemini-1.5-pro"; // Updated to available model
+const GEMINI_PRO_MODEL = "gemini-1.5-flash"; // Use flash model for better quota management
 const GEMINI_FLASH_MODEL = "gemini-1.5-flash"; // Faster alternative
 const GEMINI_PRO_VISION_MODEL = "gemini-1.5-pro"; // Vision capabilities
 let genAI = null;
 
+// Global connection test flag to prevent multiple tests
+let connectionTested = false;
+let connectionStatus = false;
+
 function generateGoogleGeminiClient() {
     if (!genAI) {
         genAI = new GoogleGenerativeAI(GOOGLE_GEMINI_API_KEY);
+        logger.info('🤖 GoogleGenerativeAI client created');
     }
     return genAI;
 }
@@ -52,28 +58,50 @@ function getPromptResponse(model, prompt) {
         if (!prompt) {
             return reject(new Error("prompt is empty"));
         }
+        
+        const callId = `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const requestStart = Date.now();
+        
         try {
-            logger.info('📤 Sending request to Gemini model:', {
+            logger.info('📤 [LLM REQUEST] Sending request to Gemini model:', {
                 model: model.model,
                 promptLength: prompt.length,
-                promptPreview: prompt.substring(0, 200) + '...'
+                promptPreview: prompt.substring(0, 100) + '...',
+                timestamp: new Date().toISOString(),
+                callId
             });
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
+            const requestTime = Date.now() - requestStart;
+            
             let finalResponse = response.text().replace(/```json|```/g, '').trim();
             
-            logger.info('📥 Received response from Gemini model:', {
+            logger.info('📥 [LLM RESPONSE] Received response from Gemini model:', {
+                model: model.model,
                 responseLength: finalResponse.length,
-                responsePreview: finalResponse.substring(0, 200) + '...'
+                responsePreview: finalResponse.substring(0, 200) + '...',
+                requestTime: `${requestTime}ms`,
+                timestamp: new Date().toISOString(),
+                callId
+            });
+
+            // Track successful call
+            apiMonitor.trackLLMCall({
+                requestId: callId,
+                model: model.model,
+                promptLength: prompt.length,
+                success: true,
+                responseTime: requestTime
             });
 
             // Try to parse as JSON, if it fails return as text
             let parsedResponse;
             try {
                 parsedResponse = JSON.parse(finalResponse);
+                logger.info('✅ [LLM PARSE] Successfully parsed JSON response');
             } catch (parseError) {
-                logger.warn('⚠️ Response is not valid JSON, returning as text');
+                logger.warn('⚠️ [LLM PARSE] Response is not valid JSON, returning as text');
                 parsedResponse = finalResponse;
             }
 
@@ -81,14 +109,33 @@ function getPromptResponse(model, prompt) {
                 "promptResponse": parsedResponse
             });
         } catch (error) {
-            logger.error('❌ Error in Gemini model response:', error);
+            const requestTime = Date.now() - requestStart;
+            
+            logger.error('❌ [LLM ERROR] Error in Gemini model response:', {
+                error: error.message,
+                model: model.model,
+                timestamp: new Date().toISOString(),
+                callId,
+                requestTime: `${requestTime}ms`
+            });
+
+            // Track failed call
+            apiMonitor.trackLLMCall({
+                requestId: callId,
+                model: model.model,
+                promptLength: prompt.length,
+                success: false,
+                error: error.message,
+                responseTime: requestTime
+            });
+
             return reject(error);
         }
     });
 }
 
 /**
- * LLM Agent - Powered by Gemini 1.5 Pro for reliable responses with higher rate limits
+ * LLM Agent - Powered by Gemini 1.5 Flash for better quota management
  * This agent is used by specialized agents for LLM-powered tasks
  * Implements singleton pattern to prevent multiple instances
  */
@@ -98,6 +145,8 @@ export class LLMAgent {
   static getInstance() {
     if (!LLMAgent.#instance) {
       LLMAgent.#instance = new LLMAgent();
+    } else {
+      logger.info('🔄 [LLM SINGLETON] Reusing existing LLM agent instance');
     }
     return LLMAgent.#instance;
   }
@@ -105,6 +154,7 @@ export class LLMAgent {
   constructor() {
     // Prevent multiple instances
     if (LLMAgent.#instance) {
+      logger.warn('⚠️ [LLM SINGLETON] Attempted to create multiple LLM instances - returning existing');
       return LLMAgent.#instance;
     }
 
@@ -114,16 +164,38 @@ export class LLMAgent {
     }
 
     this.genAI = generateGoogleGeminiClient();
-    this.model = getGeminiProModel();
+    this.model = getGeminiFlashModel(); // Use flash model by default for quota management
     this.flashModel = getGeminiFlashModel(); // Faster model for simple tasks
     
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
     
-    logger.info('🤖 LLMAgent initialized with Gemini 1.5 Pro and Flash models');
-    this.testConnection();
-
+    logger.info('🤖 [LLM INIT] LLMAgent initialized with Gemini 1.5 Flash (quota-optimized) - NO AUTO TEST');
+    
+    // DO NOT TEST CONNECTION IN CONSTRUCTOR
+    // Connection test should be called manually from application startup
+    
     LLMAgent.#instance = this;
+  }
+
+  /**
+   * Initialize LLM connection - CALL THIS ONLY ONCE AT APPLICATION STARTUP
+   */
+  static async initializeConnection() {
+    if (connectionTested) {
+      logger.info('🔄 [LLM INIT] Connection already tested, skipping');
+      return connectionStatus;
+    }
+
+    logger.info('🔍 [LLM INIT] Starting ONE-TIME LLM connection test at application startup...');
+    
+    // Get singleton instance
+    const instance = LLMAgent.getInstance();
+    
+    // Delay to avoid quota issues during startup
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    return await instance.testConnection();
   }
 
   // Update call counter
@@ -139,10 +211,11 @@ export class LLMAgent {
     RATE_LIMIT.totalCalls++;
     RATE_LIMIT.callsThisMinute++;
     
-    logger.info('📊 LLM Call Statistics:', {
+    logger.info('📊 [LLM STATS] Call Statistics:', {
       totalCalls: RATE_LIMIT.totalCalls,
       callsThisMinute: RATE_LIMIT.callsThisMinute,
-      remainingThisMinute: RATE_LIMIT.requestsPerMinute - RATE_LIMIT.callsThisMinute
+      remainingThisMinute: RATE_LIMIT.requestsPerMinute - RATE_LIMIT.callsThisMinute,
+      quotaStatus: RATE_LIMIT.callsThisMinute >= RATE_LIMIT.requestsPerMinute ? 'EXCEEDED' : 'OK'
     });
   }
 
@@ -158,7 +231,7 @@ export class LLMAgent {
     if (RATE_LIMIT.requestQueue.length >= RATE_LIMIT.requestsPerMinute) {
       const oldestRequest = RATE_LIMIT.requestQueue[0];
       const waitTime = 60000 - (now - oldestRequest);
-      logger.warn(`⏳ Rate limit reached, waiting ${waitTime}ms`);
+      logger.warn(`⏳ [LLM RATE_LIMIT] Rate limit reached, waiting ${waitTime}ms`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
@@ -171,53 +244,43 @@ export class LLMAgent {
   }
 
   async testConnection() {
+    if (connectionTested) {
+      logger.info('🔄 [LLM TEST] Connection already tested, skipping');
+      return connectionStatus;
+    }
+
+    connectionTested = true;
+    
     try {
-      logger.info('🔍 Testing LLM connection...');
-      
-      // First, try to list available models for debugging
-      try {
-        const models = await this.genAI.listModels();
-        logger.info('📋 Available models:', {
-          models: models.map(m => m.name),
-          count: models.length
-        });
-      } catch (listError) {
-        logger.warn('⚠️ Could not list models:', listError.message);
-      }
+      logger.info('🔍 [LLM TEST] Testing LLM connection (SINGLE TEST ONLY)...');
       
       const result = await this.rateLimitedRequest(async () => {
-        return await getPromptResponse(this.model, 'Respond with "LLM connection successful"');
+        return await getPromptResponse(this.model, 'Test');
       });
 
-      logger.info('✅ LLM connection test successful:', result);
+      logger.info('✅ [LLM TEST] LLM connection test successful:', result);
+      connectionStatus = true;
       return true;
     } catch (error) {
-      logger.error('❌ LLM connection test failed:', error);
+      logger.error('❌ [LLM TEST] LLM connection test failed:', error);
+      connectionStatus = false;
+      
       if (error.message.includes('PERMISSION_DENIED')) {
-        logger.error('🔑 API key validation failed. Please check your GEMINI_API_KEY.');
-      } else if (error.message.includes('RESOURCE_EXHAUSTED')) {
-        logger.error('⚠️ API quota exceeded. Please check your usage limits.');
+        logger.error('🔑 [LLM TEST] API key validation failed. Please check your GEMINI_API_KEY.');
+      } else if (error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('429')) {
+        logger.error('⚠️ [LLM TEST] API quota exceeded. Using CPU models only until quota resets.');
+        // Don't try fallback models when quota is exceeded
       } else if (error.message.includes('404') || error.message.includes('not found')) {
-        logger.error('🔍 Model not found. Trying fallback model...');
-        // Try with flash model as fallback
+        logger.error('🔍 [LLM TEST] Model not found. Trying fallback model...');
         try {
-          const fallbackResult = await getPromptResponse(this.flashModel, 'Respond with "LLM fallback connection successful"');
-          logger.info('✅ LLM fallback connection successful:', fallbackResult);
-          this.model = this.flashModel; // Use flash model as primary
+          const legacyModel = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+          const legacyResult = await getPromptResponse(legacyModel, 'Test');
+          logger.info('✅ [LLM TEST] LLM legacy connection successful:', legacyResult);
+          this.model = legacyModel; // Use legacy model as primary
+          connectionStatus = true;
           return true;
-        } catch (fallbackError) {
-          logger.error('❌ Fallback model also failed:', fallbackError);
-          
-          // Try with legacy gemini-pro model as last resort
-          try {
-            const legacyModel = this.genAI.getGenerativeModel({ model: "gemini-pro" });
-            const legacyResult = await getPromptResponse(legacyModel, 'Respond with "LLM legacy connection successful"');
-            logger.info('✅ LLM legacy connection successful:', legacyResult);
-            this.model = legacyModel; // Use legacy model as primary
-            return true;
-          } catch (legacyError) {
-            logger.error('❌ Legacy model also failed:', legacyError);
-          }
+        } catch (legacyError) {
+          logger.error('❌ [LLM TEST] Legacy model also failed:', legacyError);
         }
       }
       return false;
@@ -229,7 +292,7 @@ export class LLMAgent {
    */
   async execute(userQuery, context = {}) {
     try {
-      logger.info('🧠 LLMAgent executing task:', {
+      logger.info('🧠 [LLM EXECUTE] LLMAgent executing task:', {
         queryLength: userQuery.length,
         queryPreview: userQuery.substring(0, 100) + '...',
         contextKeys: Object.keys(context),
@@ -242,7 +305,7 @@ export class LLMAgent {
       
       const response = result.promptResponse || result;
       
-      logger.info('✅ LLM execution completed:', {
+      logger.info('✅ [LLM EXECUTE] LLM execution completed:', {
         responseType: typeof response,
         responseLength: JSON.stringify(response).length,
         responsePreview: JSON.stringify(response).substring(0, 200) + '...'
@@ -261,7 +324,7 @@ export class LLMAgent {
       };
       
     } catch (error) {
-      logger.error('❌ LLMAgent execution error:', error);
+      logger.error('❌ [LLM EXECUTE] LLMAgent execution error:', error);
       throw error;
     }
   }
@@ -275,7 +338,7 @@ export class LLMAgent {
         throw new Error('Task must be a non-empty string');
       }
 
-      logger.info(`🤝 LLMAgent collaborating with ${agentName}:`, {
+      logger.info(`🤝 [LLM COLLAB] LLMAgent collaborating with ${agentName}:`, {
         taskLength: task.length,
         taskPreview: task.substring(0, 200) + '...',
         contextKeys: Object.keys(context),
@@ -289,7 +352,7 @@ export class LLMAgent {
       const response = result.promptResponse || result;
       const responseText = typeof response === 'string' ? response : JSON.stringify(response);
       
-      logger.info(`✅ LLM collaboration complete for ${agentName}:`, {
+      logger.info(`✅ [LLM COLLAB] LLM collaboration complete for ${agentName}:`, {
         responseLength: responseText.length,
         responsePreview: responseText.substring(0, 200) + '...',
         responseType: typeof response
@@ -312,7 +375,7 @@ export class LLMAgent {
         }
       };
 
-      logger.info(`📊 Collaboration result for ${agentName}:`, {
+      logger.info(`📊 [LLM COLLAB] Collaboration result for ${agentName}:`, {
         analysis: collaborationResult.analysis,
         nextSteps: collaborationResult.nextSteps,
         metadata: collaborationResult.metadata
@@ -321,7 +384,7 @@ export class LLMAgent {
       return collaborationResult;
       
     } catch (error) {
-      logger.error(`❌ Error collaborating with ${agentName}:`, error);
+      logger.error(`❌ [LLM COLLAB] Error collaborating with ${agentName}:`, error);
       throw error;
     }
   }

@@ -18,18 +18,16 @@ export class DesignAgentExecutor {
   constructor() {
     this.cancelledTasks = new Set();
     
-    // Initialize our agent system
+    // Initialize our agent system - Use singleton orchestrator only
     this.orchestrator = new AgentOrchestrator();
+    
+    // Get agents from orchestrator instead of creating new instances
     this.agents = {
-      projectManager: new ProjectManagerAgent(),
-      architectureDesigner: new ArchitectureDesignerAgent(),
-      databaseDesigner: new DatabaseDesignerAgent(),
-      apiDesigner: new APIDesignerAgent(),
-      codeGenerator: new CodeGeneratorAgent(),
-      techLead: new TechLeadAgent()
+      projectManager: this.orchestrator.projectManager,
+      architectureDesigner: this.orchestrator.architectureDesigner
     };
     
-    logger.info('🤖 DesignAgentExecutor initialized with all agents');
+    logger.info('🤖 [AGENT EXECUTOR] DesignAgentExecutor initialized with singleton agents');
   }
 
   /**

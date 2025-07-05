@@ -1,19 +1,19 @@
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
-import ProjectManagerAgent from './agents/ProjectManagerAgent.js';
-import TechLeadAgent from './agents/TechLeadAgent.js';
 import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
 import { IntelligentTaskRouter } from './IntelligentTaskRouter.js';
 
 class A2AService {
   constructor() {
-    // Initialize intelligent router and orchestrator
+    // Initialize intelligent router and orchestrator - use singletons
     this.intelligentRouter = new IntelligentTaskRouter();
     this.orchestrator = new AgentOrchestrator();
-    this.projectManager = new ProjectManagerAgent();
-    this.techLead = new TechLeadAgent();
     
-    logger.info('🚀 A2AService initialized with IntelligentTaskRouter and orchestrator');
+    // Get agents from orchestrator instead of creating new instances
+    this.projectManager = this.orchestrator.projectManager;
+    this.techLead = this.orchestrator.techLead || null; // May not exist yet
+    
+    logger.info('🚀 [A2A SERVICE] A2AService initialized with singleton orchestrator and router');
   }
 
   /**

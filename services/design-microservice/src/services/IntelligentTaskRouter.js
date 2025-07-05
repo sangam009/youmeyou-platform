@@ -14,7 +14,7 @@ export class IntelligentTaskRouter {
     this.llmAgent = LLMAgent.getInstance();
     this.complexityThreshold = 0.7; // Simple vs Complex routing threshold
     
-    logger.info('🚀 TRULY IntelligentTaskRouter initialized with CPU models and LLM');
+    logger.info('🚀 [TASK ROUTER] IntelligentTaskRouter initialized with CPU models and LLM singleton');
   }
 
   /**
@@ -542,23 +542,22 @@ Example: ["projectManager", "architectureDesigner", "databaseDesigner"]
       }
       
       // Fallback to LLM if CPU models don't provide agent recommendations
-      logger.info('🤖 Using LLM for agent selection fallback');
-      const { LLMAgent } = await import('./agents/LLMAgent.js');
-      const llmAgent = new LLMAgent();
+      logger.info('🤖 [TASK ROUTER] Using LLM for agent selection fallback');
       
-      const llmResponse = await llmAgent.generateContent(agentSelectionPrompt, {
+      const llmResponse = await this.llmAgent.execute(agentSelectionPrompt, {
         responseFormat: 'json',
         maxTokens: 100
       });
       
       try {
-        const agentList = JSON.parse(llmResponse);
+        const responseText = typeof llmResponse.content === 'string' ? llmResponse.content : JSON.stringify(llmResponse.content);
+        const agentList = JSON.parse(responseText);
         if (Array.isArray(agentList)) {
-          logger.info('✅ LLM selected agents:', agentList);
+          logger.info('✅ [TASK ROUTER] LLM selected agents:', agentList);
           return agentList;
         }
       } catch (parseError) {
-        logger.warn('⚠️ Could not parse LLM agent selection response');
+        logger.warn('⚠️ [TASK ROUTER] Could not parse LLM agent selection response');
       }
       
     } catch (error) {

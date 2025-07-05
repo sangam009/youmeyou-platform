@@ -21,6 +21,11 @@ import dynamicPromptingRoutes from './routes/dynamicPrompting.js';
 // Import middleware
 import authMiddleware from './middleware/auth.js';
 
+// Import services that need initialization
+import { vectorDB } from './services/VectorDBService.js';
+import { a2aService } from './services/a2aService.js';
+import { LLMAgent } from './services/agents/LLMAgent.js';
+
 const app = express();
 
 // CORS configuration
@@ -210,7 +215,35 @@ app.use('*', (req, res) => {
 
 // Start the server
 const PORT = config.port || 4000;
-app.listen(PORT, () => {
+
+// Initialize services before starting the server
+async function initializeServices() {
+  logger.info('🔧 Initializing services...');
+  
+  try {
+    // Initialize VectorDB collections
+    logger.info('🔧 Initializing VectorDB collections...');
+    await vectorDB.initializeCollections();
+    
+    // Initialize A2A Service
+    logger.info('🚀 Initializing A2A Service...');
+    // a2aService is already initialized when imported
+    
+    // Initialize LLM connection - SINGLE TEST ONLY
+    logger.info('🤖 Initializing LLM connection (ONE-TIME TEST)...');
+    await LLMAgent.initializeConnection();
+    
+    logger.info('✅ All services initialized successfully');
+    return true;
+    
+  } catch (error) {
+    logger.error('❌ Service initialization failed:', error);
+    // Continue startup even if some services fail
+    return false;
+  }
+}
+
+app.listen(PORT, async () => {
   logger.info('🚀 Design microservice startup configuration:');
   logger.info(`├── Environment: ${config.environment}`);
   logger.info(`├── Port: ${PORT}`);
@@ -228,6 +261,9 @@ app.listen(PORT, () => {
   logger.info(`├── Redis: ${config.redis.host}:${config.redis.port}`);
   logger.info(`├── A2A Agent Card: ${config.a2a.baseUrl}/.well-known/agent.json`);
   logger.info(`└── A2A Endpoints: ${config.a2a.baseUrl}/a2a/*`);
+  
+  // Initialize services after server starts
+  await initializeServices();
 });
 
 export default app;
