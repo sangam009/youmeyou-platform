@@ -1,12 +1,10 @@
-import { config } from '../config';
+import { SSE } from 'sse.js';
 import logger from '@/lib/logger';
+import { StreamingOptions } from './streaming';
+import { config } from '../config';
 
-export interface StreamingOptions {
-  onProgress?: (progress: number) => void;
-  onError?: (error: any) => void;
-  onComplete?: (result: any) => void;
-  onCanvasUpdate?: (canvasData: any) => void;
-  onCodeUpdate?: (codeData: any) => void;
+// Extend StreamingOptions to include onMessage
+interface ExtendedStreamingOptions extends StreamingOptions {
   onMessage?: (data: any) => void;
 }
 
@@ -50,75 +48,109 @@ export class A2AStreamingService {
     });
   }
 
-  public static setupEventSource(url: string, options: StreamingOptions = {}): EventSource {
-    const eventSource = new EventSource(url);
-
+  public static setupSSE(url: string, postData: any, options: ExtendedStreamingOptions = {}): SSE {
     // Reset stats for new connection
     this.resetStats();
     this.stats.startTime = Date.now();
 
+    const source = new SSE(url, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      payload: JSON.stringify(postData),
+      method: 'POST',
+      withCredentials: true
+    });
+
     // Handle connection open
-    eventSource.onopen = () => {
-      logger.info('🔌 EventSource connection opened');
-    };
+    source.addEventListener('open', () => {
+      logger.info('🔌 SSE connection opened');
+    });
 
     // Handle errors
-    eventSource.onerror = (error) => {
-      logger.error('❌ EventSource error:', error);
+    source.addEventListener('error', (error: Event) => {
+      logger.error('❌ SSE error:', error);
       if (options.onError) {
         options.onError(error);
       }
-    };
+    });
 
-    // Handle messages
-    eventSource.onmessage = (event) => {
-      try {
-        // Update stats
-        this.stats.messagesReceived++;
-        this.stats.bytesReceived += event.data.length;
-        this.stats.lastMessageTime = Date.now();
+    // Handle all possible event types
+    const eventTypes = [
+      'connected',
+      'message',
+      'agent_start',
+      'agent_complete',
+      'task_analysis',
+      'task_division',
+      'subtask_start',
+      'subtask_complete',
+      'routing',
+      'follow_up',
+      'error',
+      'complete'
+    ];
 
-        // Parse message data
-        const data = JSON.parse(event.data);
-        
-        // Call message handler if provided
-        if (options.onMessage) {
-          options.onMessage(data);
+    // Set up listeners for all event types
+    eventTypes.forEach(eventType => {
+      source.addEventListener(eventType, (event: MessageEvent) => {
+        try {
+          logger.debug(`📡 Received ${eventType} event:`, event.data);
+          const data = JSON.parse(event.data);
+          
+          switch (eventType) {
+            case 'error':
+              logger.error('❌ Stream error:', data);
+              if (options.onError) {
+                options.onError(data);
+              }
+              source.close();
+              break;
+            
+            case 'complete':
+              logger.info('✅ Stream completed:', data);
+              if (options.onComplete) {
+                options.onComplete(data.result);
+              }
+              source.close();
+              break;
+            
+            case 'connected':
+              logger.info('🔌 Stream connected:', data);
+              break;
+
+            case 'agent_start':
+              logger.info('🤖 Agent started:', data);
+              break;
+
+            case 'agent_complete':
+              logger.info('✨ Agent completed:', data);
+              break;
+
+            case 'task_analysis':
+              logger.info('🔍 Task analysis:', data);
+              break;
+
+            case 'task_division':
+              logger.info('📋 Task division:', data);
+              break;
+
+            default:
+              // Process all other events through the message handler
+              if (options.onMessage) {
+                options.onMessage(data);
+              }
+          }
+        } catch (error) {
+          logger.warn(`⚠️ Error processing ${eventType} event:`, error);
         }
+      });
+    });
 
-        // Handle progress updates
-        if (data.progress && options.onProgress) {
-          options.onProgress(data.progress);
-        }
-
-        // Handle canvas updates
-        if (data.canvasData && options.onCanvasUpdate) {
-          options.onCanvasUpdate(data.canvasData);
-        }
-
-        // Handle code updates
-        if (data.codeData && options.onCodeUpdate) {
-          options.onCodeUpdate(data.codeData);
-        }
-
-        // Handle completion
-        if (data.type === 'complete' && options.onComplete) {
-          options.onComplete(data);
-          eventSource.close();
-        }
-
-      } catch (error) {
-        logger.error('❌ Error processing message:', error);
-        if (options.onError) {
-          options.onError(error);
-        }
-      }
-    };
-
-    return eventSource;
+    return source;
   }
 
-  async startStreamingExecution(task: any, options: StreamingOptions = {}) {
+  async startStreamingExecution(task: any, options: ExtendedStreamingOptions = {}) {
     try {
       logger.info('🔄 Starting streaming execution:', {
         task,
@@ -138,99 +170,22 @@ export class A2AStreamingService {
       const urlStr = this.baseUrl.startsWith('http') 
         ? `${this.baseUrl}/agents/ask` // Absolute URL
         : `${window.location.origin}${this.baseUrl}/agents/ask`; // Relative URL
-      
-      // Create URL with data in query params for EventSource
-      const url = new URL(urlStr);
-      url.searchParams.append('data', JSON.stringify(postData));
-      
-      logger.info('📡 Constructed streaming URL:', {
-        fullUrl: url.toString(),
-        baseUrl: this.baseUrl,
-        pathname: url.pathname,
-        searchParams: url.searchParams,
-        protocol: url.protocol,
-        host: url.host
+
+      logger.info('📡 Setting up SSE connection with POST:', {
+        url: urlStr,
+        postData
       });
 
-      // Create EventSource with the URL
-      const eventSource = A2AStreamingService.setupEventSource(url.toString(), options);
+      // Create SSE connection with POST support
+      const source = A2AStreamingService.setupSSE(urlStr, postData, options);
 
-      // Handle all possible event types
-      const eventTypes = [
-        'connected',
-        'message',
-        'agent_start',
-        'agent_complete',
-        'task_analysis',
-        'task_division',
-        'subtask_start',
-        'subtask_complete',
-        'routing',
-        'follow_up',
-        'error',
-        'complete'
-      ];
-
-      // Set up listeners for all event types
-      eventTypes.forEach(eventType => {
-        eventSource.addEventListener(eventType, (event) => {
-          try {
-            logger.debug(`📡 Received ${eventType} event:`, event.data);
-            const data = JSON.parse(event.data);
-            
-            switch (eventType) {
-              case 'error':
-                logger.error('❌ Stream error:', data);
-                if (options.onError) {
-                  options.onError(data);
-                }
-                eventSource.close();
-                break;
-              
-              case 'complete':
-                logger.info('✅ Stream completed:', data);
-                if (options.onComplete) {
-                  options.onComplete(data.result);
-                }
-                eventSource.close();
-                break;
-              
-              case 'connected':
-                logger.info('🔌 Stream connected:', data);
-                break;
-
-              case 'agent_start':
-                logger.info('🤖 Agent started:', data);
-                break;
-
-              case 'agent_complete':
-                logger.info('✨ Agent completed:', data);
-                break;
-
-              case 'task_analysis':
-                logger.info('🔍 Task analysis:', data);
-                break;
-
-              case 'task_division':
-                logger.info('📋 Task division:', data);
-                break;
-
-              default:
-                // Process all other events through the message handler
-                if (options.onMessage) {
-                  options.onMessage(data);
-                }
-            }
-          } catch (error) {
-            logger.warn(`⚠️ Error processing ${eventType} event:`, error);
-          }
-        });
-      });
+      // Start the connection
+      source.stream();
 
       // Return cleanup function
       return () => {
-        logger.info('🧹 Cleaning up EventSource connection');
-        eventSource.close();
+        logger.info('🧹 Cleaning up SSE connection');
+        source.close();
       };
 
     } catch (error) {
@@ -242,7 +197,7 @@ export class A2AStreamingService {
     }
   }
 
-  private processStreamChunk(data: any, options: StreamingOptions) {
+  private processStreamChunk(data: any, options: ExtendedStreamingOptions) {
     try {
       switch (data.type) {
         case 'progress':
@@ -301,7 +256,7 @@ export class A2AStreamingService {
   }
 
   // Helper method to start architecture design streaming
-  async startArchitectureDesign(canvasId: string, requirements: string, options: StreamingOptions = {}) {
+  async startArchitectureDesign(canvasId: string, requirements: string, options: ExtendedStreamingOptions = {}) {
     return this.startStreamingExecution({
       id: `arch-${canvasId}`,
       prompt: `Design architecture for: ${requirements}`,
@@ -311,7 +266,7 @@ export class A2AStreamingService {
   }
 
   // Helper method to start code generation streaming
-  async startCodeGeneration(canvasId: string, architecture: any, options: StreamingOptions = {}) {
+  async startCodeGeneration(canvasId: string, architecture: any, options: ExtendedStreamingOptions = {}) {
     return this.startStreamingExecution({
       id: `code-${canvasId}`,
       prompt: `Generate code based on architecture`,
@@ -322,6 +277,6 @@ export class A2AStreamingService {
   }
 }
 
-export const setupA2AStream = (url: string, options: StreamingOptions = {}): EventSource => {
-  return A2AStreamingService.setupEventSource(url, options);
+export const setupA2AStream = (url: string, options: StreamingOptions = {}): SSE => {
+  return A2AStreamingService.setupSSE(url, options);
 }; 

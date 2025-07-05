@@ -407,17 +407,14 @@ function DesignCanvasPage() {
         isStreaming: true
       } as ChatMessage]);
 
-      // Use A2A streaming service
-      const cleanup = await streamingService.startStreamingExecution({
-        id: streamingMessageId,
-        prompt: chatInput,
-        type: agentContext ? 'COMPONENT_ANALYSIS' : 'GENERAL_CHAT',
-        canvasId: activeWorkspace?.id,
-        architecture: {
+      // Use askAgent with proper request structure
+      const cleanup = await askAgent({
+        content: chatInput,
+        canvasState: {
           nodes,
-          edges,
-          component: agentContext
-        }
+          edges
+        },
+        component: agentContext
       }, {
         onMessage: (data: StreamingData) => {
           setChatMessages(prev => prev.map(msg => 

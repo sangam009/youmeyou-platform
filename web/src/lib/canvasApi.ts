@@ -161,7 +161,7 @@ interface ArchitectureRequest {
 }
 
 // Agent functions
-export const askAgent = (request: AgentRequest): EventSource => {
+export const askAgent = async (request: AgentRequest, options: StreamingOptions = {}) => {
   try {
     console.log('🤖 Starting streaming agent request:', request);
     
@@ -170,18 +170,15 @@ export const askAgent = (request: AgentRequest): EventSource => {
       throw new Error('Content is required for agent request');
     }
 
-    // Create query parameters
-    const params = new URLSearchParams();
-    params.append('data', JSON.stringify(request));
-
-    // Create EventSource for streaming
-    const eventSource = new EventSource(
-      `${getBaseUrl()}${getEndpoint('/agents/ask')}?${params.toString()}`,
-      { withCredentials: true }
-    );
-
-    console.log('📡 Established streaming connection to:', eventSource.url);
-    return eventSource;
+    // Use A2A streaming service
+    return streamingService.startStreamingExecution({
+      id: Date.now().toString(),
+      prompt: request.content,
+      type: 'AGENT_CHAT',
+      canvasState: request.canvasState,
+      component: request.component,
+      streamingEnabled: true
+    }, options);
 
   } catch (error) {
     console.error('❌ Error setting up agent streaming:', error);
