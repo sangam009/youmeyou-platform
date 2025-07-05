@@ -29,28 +29,34 @@ export class A2AService {
   /**
    * Route task with streaming support
    */
-  async routeTask(req, res) {
-    const { content, type = 'general', canvasState, streamingEnabled } = req.body;
-
-    // Set up SSE headers
-    if (streamingEnabled) {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-
-      // Send initial connection event
-      res.write(this.formatSSEMessage('connected', { status: 'connected' }));
-    }
-
+  async routeTask(reqOrTask, res) {
     try {
+      // Handle both request objects and direct task objects
+      const task = reqOrTask.body || reqOrTask;
+      const { content, type = 'general', canvasState, streamingEnabled, userId } = task;
+
+      if (!content) {
+        throw new Error('Content is required for task routing');
+      }
+
+      // Set up SSE headers if streaming is enabled and we have a response object
+      if (streamingEnabled && res && !res.headersSent) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+
+        // Send initial connection event
+        res.write(this.formatSSEMessage('connected', { status: 'connected' }));
+      }
+
       const context = {
-        userId: req.user?.id,
+        userId: userId,
         projectId: canvasState?.projectId,
         streamingEnabled,
         streamingCallback: (data) => {
-          if (streamingEnabled) {
+          if (streamingEnabled && res) {
             res.write(this.formatSSEMessage(data.type, data));
           }
         }
@@ -63,32 +69,30 @@ export class A2AService {
         complexity: 0.5 // Will be updated by analysis
       });
 
-      // Send completion event
-      if (streamingEnabled) {
+      // Send completion event if streaming
+      if (streamingEnabled && res) {
         res.write(this.formatSSEMessage('complete', { 
           type: 'complete',
           status: 'Task execution completed',
           result 
         }));
         res.end();
-      } else {
-        res.json(result);
       }
+
+      return result;
 
     } catch (error) {
       logger.error('❌ Task execution failed:', error);
       
-      if (streamingEnabled) {
+      if (streamingEnabled && res) {
         res.write(this.formatSSEMessage('error', {
           type: 'error',
           error: error.message
         }));
         res.end();
-      } else {
-        res.status(500).json({
-          error: error.message
-        });
       }
+
+      throw error;
     }
   }
 

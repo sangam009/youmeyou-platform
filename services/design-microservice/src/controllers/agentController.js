@@ -45,13 +45,37 @@ class AgentController {
 
   async askAgent(req, res) {
     try {
+      // Get task data from either POST body or query parameters
+      let taskData;
+      if (req.body && Object.keys(req.body).length > 0) {
+        taskData = req.body;
+      } else if (req.query.data) {
+        try {
+          taskData = JSON.parse(req.query.data);
+        } catch (error) {
+          logger.error('❌ Failed to parse task data from query:', error);
+          return res.status(400).json({
+            status: 'error',
+            message: 'Invalid task data in query parameters'
+          });
+        }
+      }
+
+      if (!taskData) {
+        logger.error('❌ No task data found in request');
+        return res.status(400).json({
+          status: 'error',
+          message: 'No task data found in request'
+        });
+      }
+
       logger.info('🤖 askAgent endpoint called', {
-        body: req.body,
+        taskData,
         user: req.user?.userId,
         headers: req.headers['content-type']
       });
 
-      const { content, canvasState, agentId } = req.body;
+      const { content, canvasState, agentId } = taskData;
       const userId = req.user?.userId || 'dummy-user-id';
       
       if (!content) {
@@ -107,8 +131,18 @@ class AgentController {
         }
       };
 
+      // Create task object
+      const task = {
+        content,
+        type: taskData.type || 'general',
+        canvasState,
+        streamingEnabled: true,
+        userId,
+        timestamp: new Date()
+      };
+
       // Process the request
-      const result = await a2aService.routeTask(content, streamingContext);
+      const result = await a2aService.routeTask({ body: task }, res);
 
       // Send completion event
       const completionData = JSON.stringify({ type: 'complete', result });
