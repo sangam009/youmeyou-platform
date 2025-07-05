@@ -139,7 +139,7 @@ export class A2AStreamingService {
         ? `${this.baseUrl}/agents/ask` // Absolute URL
         : `${window.location.origin}${this.baseUrl}/agents/ask`; // Relative URL
       
-      // Create EventSource URL with data in query params
+      // Create URL with data in query params for EventSource
       const url = new URL(urlStr);
       url.searchParams.append('data', JSON.stringify(postData));
       
@@ -147,7 +147,7 @@ export class A2AStreamingService {
         fullUrl: url.toString(),
         baseUrl: this.baseUrl,
         pathname: url.pathname,
-        searchParams: Object.fromEntries(url.searchParams),
+        searchParams: url.searchParams,
         protocol: url.protocol,
         host: url.host
       });
@@ -195,9 +195,31 @@ export class A2AStreamingService {
                 eventSource.close();
                 break;
               
+              case 'connected':
+                logger.info('🔌 Stream connected:', data);
+                break;
+
+              case 'agent_start':
+                logger.info('🤖 Agent started:', data);
+                break;
+
+              case 'agent_complete':
+                logger.info('✨ Agent completed:', data);
+                break;
+
+              case 'task_analysis':
+                logger.info('🔍 Task analysis:', data);
+                break;
+
+              case 'task_division':
+                logger.info('📋 Task division:', data);
+                break;
+
               default:
-                // Process all other events
-                this.processStreamChunk(data, options);
+                // Process all other events through the message handler
+                if (options.onMessage) {
+                  options.onMessage(data);
+                }
             }
           } catch (error) {
             logger.warn(`⚠️ Error processing ${eventType} event:`, error);
@@ -205,14 +227,14 @@ export class A2AStreamingService {
         });
       });
 
-      // Clean up on unmount
+      // Return cleanup function
       return () => {
-        logger.info('🧹 Cleaning up streaming connection');
+        logger.info('🧹 Cleaning up EventSource connection');
         eventSource.close();
       };
 
     } catch (error) {
-      logger.error('❌ Streaming execution error:', error);
+      logger.error('❌ Error in startStreamingExecution:', error);
       if (options.onError) {
         options.onError(error);
       }
