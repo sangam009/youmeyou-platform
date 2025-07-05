@@ -4,6 +4,8 @@ import React, { useState, useCallback, useContext, useRef, useEffect } from 'rea
 import { ReactFlow, Background, Controls, MiniMap, Node, Edge, Connection, addEdge, useNodesState, useEdgesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { WorkspaceContext } from '../layout';
+import { setupA2AStream } from '@/lib/a2aStreaming';
+import logger from '@/lib/logger';
 import { 
   PlusIcon, 
   SparklesIcon, 
@@ -21,6 +23,23 @@ import {
 } from '@heroicons/react/24/outline';
 import { getWorkspaces } from '@/lib/dashboardApi';
 import { askAgent } from '@/lib/canvasApi';
+
+// Message types
+interface ChatMessage {
+  id: string;
+  type: 'user' | 'agent';
+  content: string;
+  timestamp: Date;
+  actions?: AgentAction[];
+  isStreaming?: boolean;
+  hasError?: boolean;
+}
+
+interface AgentAction {
+  type: string;
+  status: 'ready' | 'completed' | 'failed';
+  data?: any;
+}
 
 // Enhanced node types with scalability properties
 const initialNodes: Node[] = [
@@ -153,7 +172,7 @@ function DesignCanvasPage() {
   const [agentContext, setAgentContext] = useState<any>(null);
   const [currentMode, setCurrentMode] = useState<'design' | 'deploy'>('design');
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<Array<{id: string, type: 'user' | 'agent', content: string, timestamp: Date}>>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAgentTyping, setIsAgentTyping] = useState(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -370,62 +389,91 @@ function DesignCanvasPage() {
     setIsAgentTyping(true);
 
     try {
-      console.log('🔥 About to call askAgent function');
-      console.log('🔥 askAgent function type:', typeof askAgent);
-      
-      // Use the centralized askAgent API - let backend intelligently analyze the prompt
-      const result = await askAgent({
-        content: chatInput,
-        canvasState: { nodes, edges }
-        // No more client-side type specification - backend will analyze complexity and route intelligently
+      logger.info('🚀 Starting A2A streaming chat session', {
+        input: chatInput,
+        context: {
+          hasNodes: nodes.length > 0,
+          hasEdges: edges.length > 0,
+          agentContext: agentContext ? true : false
+        }
       });
-      
-      console.log('🔥 askAgent call completed, result:', result);
-      
-      // Extract the response content from the API structure
-      let responseContent = "I'm here to help with your architecture! Could you tell me more about what you're trying to build?";
-      let agentActions = [];
-      
-      if (result.status === 'success' && result.data) {
-        const agentResponse = result.data.response;
-        if (agentResponse && agentResponse.data && agentResponse.data.analysis) {
-          responseContent = agentResponse.data.analysis;
-        } else if (agentResponse && agentResponse.raw) {
-          // Extract content from raw response if structured analysis isn't available
-          responseContent = agentResponse.raw.replace(/```json|```/g, '').trim();
-          try {
-            const parsed = JSON.parse(responseContent);
-            responseContent = parsed.analysis || parsed.content || responseContent;
-          } catch (e) {
-            // If parsing fails, use the raw content
-          }
-        } else if (typeof agentResponse === 'string') {
-          responseContent = agentResponse;
-        }
 
-        // Check for processed actions
-        if (agentResponse && agentResponse.processedActions) {
-          agentActions = agentResponse.processedActions;
-        }
-      }
-      
-      const agentMessage = {
-        id: (Date.now() + 1).toString(),
+      // Create placeholder for streaming message
+      const streamingMessageId = (Date.now() + 1).toString();
+      setChatMessages(prev => [...prev, {
+        id: streamingMessageId,
         type: 'agent' as const,
-        content: responseContent,
+        content: '',
         timestamp: new Date(),
-        actions: agentActions
-      };
+        isStreaming: true
+      }]);
 
-      setChatMessages(prev => [...prev, agentMessage]);
-
-      // Process any actions from the agent
-      if (agentActions.length > 0) {
-        await processAgentActions(agentActions);
+      // Setup streaming
+      const streamUrl = new URL('/api/design/chat/stream', window.location.origin);
+      streamUrl.searchParams.append('content', chatInput);
+      streamUrl.searchParams.append('canvasState', JSON.stringify({ nodes, edges }));
+      if (agentContext) {
+        streamUrl.searchParams.append('context', JSON.stringify(agentContext));
       }
+
+      const eventSource = setupA2AStream(streamUrl.toString(), {
+        onMessage: (data) => {
+          // Update streaming message content
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId
+              ? {
+                  ...msg,
+                  content: msg.content + (data.content || ''),
+                  actions: data.actions || msg.actions
+                }
+              : msg
+          ));
+        },
+        onError: (error) => {
+          logger.error('❌ Streaming chat error:', error);
+          
+          // Update streaming message to show error
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId
+              ? {
+                  ...msg,
+                  content: "I'm having trouble connecting to my AI brain right now. Could you try again?",
+                  isStreaming: false,
+                  hasError: true
+                }
+              : msg
+          ));
+          setIsAgentTyping(false);
+        },
+        onComplete: () => {
+          // Mark streaming as complete
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId
+              ? { ...msg, isStreaming: false }
+              : msg
+          ));
+          setIsAgentTyping(false);
+
+          // Process any accumulated actions
+          const finalMessage = chatMessages.find(msg => msg.id === streamingMessageId);
+          if (finalMessage?.actions && finalMessage.actions.length > 0) {
+            processAgentActions(finalMessage.actions);
+          }
+
+          logger.info('✅ Chat streaming completed', {
+            messageId: streamingMessageId,
+            hasActions: finalMessage?.actions?.length ?? 0
+          });
+        }
+      });
+
+      // Cleanup on unmount
+      return () => {
+        eventSource.close();
+      };
       
     } catch (error) {
-      console.error('Error sending message to agent:', error);
+      logger.error('❌ Chat error:', error);
       
       // Fallback response
       const fallbackMessage = {
@@ -436,10 +484,9 @@ function DesignCanvasPage() {
       };
       
       setChatMessages(prev => [...prev, fallbackMessage]);
-    } finally {
       setIsAgentTyping(false);
     }
-  }, [chatInput, isAgentTyping, agentContext, nodes, edges]);
+  }, [chatInput, isAgentTyping, agentContext, nodes, edges, chatMessages]);
 
   const handleChatKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -1,4 +1,5 @@
 import { config } from '../config';
+import logger from './logger';
 
 export interface StreamingOptions {
   onProgress?: (progress: number) => void;
@@ -6,23 +7,118 @@ export interface StreamingOptions {
   onComplete?: (result: any) => void;
   onCanvasUpdate?: (canvasData: any) => void;
   onCodeUpdate?: (codeData: any) => void;
+  onMessage?: (data: any) => void;
+}
+
+interface StreamStats {
+  messagesReceived: number;
+  bytesReceived: number;
+  startTime: number;
+  lastMessageTime: number;
 }
 
 export class A2AStreamingService {
   private baseUrl: string;
+  private static stats: StreamStats = {
+    messagesReceived: 0,
+    bytesReceived: 0,
+    startTime: 0,
+    lastMessageTime: 0
+  };
 
   constructor() {
     this.baseUrl = config.api.designService;
+  }
+
+  static resetStats() {
+    this.stats = {
+      messagesReceived: 0,
+      bytesReceived: 0,
+      startTime: Date.now(),
+      lastMessageTime: Date.now()
+    };
+  }
+
+  static logStats() {
+    const duration = Date.now() - this.stats.startTime;
+    logger.info('📊 A2A Streaming Stats:', {
+      messagesReceived: this.stats.messagesReceived,
+      bytesReceived: this.stats.bytesReceived,
+      durationMs: duration,
+      avgMessageSize: this.stats.bytesReceived / (this.stats.messagesReceived || 1),
+      messagesPerSecond: (this.stats.messagesReceived / duration) * 1000
+    });
+  }
+
+  static setupEventSource(url: string, options: StreamingOptions = {}): EventSource {
+    this.resetStats();
+    
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+      try {
+        // Update stats
+        this.stats.messagesReceived++;
+        this.stats.bytesReceived += event.data.length;
+        this.stats.lastMessageTime = Date.now();
+
+        // Log every 10th message for performance
+        if (this.stats.messagesReceived % 10 === 0) {
+          this.logStats();
+        }
+
+        const data = JSON.parse(event.data);
+        logger.debug('📥 Received streaming message:', {
+          type: data.type,
+          messageNumber: this.stats.messagesReceived,
+          timestamp: new Date().toISOString()
+        });
+
+        options.onMessage?.(data);
+      } catch (error) {
+        logger.error('❌ Error processing stream message:', {
+          error,
+          rawData: event.data
+        });
+        options.onError?.(error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      logger.error('❌ Stream connection error:', error);
+      this.logStats(); // Log final stats on error
+      options.onError?.(error);
+      eventSource.close();
+    };
+
+    eventSource.addEventListener('complete', () => {
+      logger.info('✅ Stream completed successfully');
+      this.logStats(); // Log final stats on completion
+      options.onComplete?.();
+      eventSource.close();
+    });
+
+    return eventSource;
   }
 
   async startStreamingExecution(task: any, options: StreamingOptions = {}) {
     try {
       console.log('🔄 Starting streaming execution:', task);
       
-      // Create EventSource for server-sent events
-      const eventSource = new EventSource(`${this.baseUrl}/agents/ask`, {
-        withCredentials: true
-      });
+      // Prepare the POST data
+      const postData = {
+        content: task.prompt,
+        type: task.type || 'general',
+        canvasState: { projectId: task.canvasId },
+        architecture: task.architecture,
+        streamingEnabled: true
+      };
+
+      // Create POST request with EventSource
+      const url = new URL(`${this.baseUrl}/agents/ask`);
+      url.searchParams.append('data', JSON.stringify(postData));
+      
+      const eventSource = A2AStreamingService.setupEventSource(url.toString(), options);
 
       // Handle all possible event types
       const eventTypes = [
@@ -48,11 +144,6 @@ export class A2AStreamingService {
             const data = JSON.parse(event.data);
             
             switch (eventType) {
-              case 'connected':
-                // Send task data after connection
-                this.sendTaskData(task, options, eventSource);
-                break;
-              
               case 'error':
                 console.error('❌ Stream error:', data);
                 if (options.onError) {
@@ -91,31 +182,6 @@ export class A2AStreamingService {
         options.onError(error);
       }
       throw error;
-    }
-  }
-
-  private async sendTaskData(task: any, options: StreamingOptions, eventSource: EventSource) {
-    try {
-      await fetch(`${this.baseUrl}/agents/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          content: task.prompt,
-          type: task.type || 'general',
-          canvasState: { projectId: task.canvasId },
-          architecture: task.architecture,
-          streamingEnabled: true
-        })
-      });
-    } catch (error) {
-      console.error('❌ Error sending task data:', error);
-      if (options.onError) {
-        options.onError(error);
-      }
-      eventSource.close();
     }
   }
 
@@ -197,4 +263,8 @@ export class A2AStreamingService {
       architecture
     }, options);
   }
-} 
+}
+
+export const setupA2AStream = (url: string, options: StreamingOptions = {}): EventSource => {
+  return A2AStreamingService.setupEventSource(url, options);
+}; 
