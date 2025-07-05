@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@a2a-js/sdk": "^0.2.2",
-    "@google/genai": "^1.8.0",
+    "@google/generative-ai": "^0.21.0",
     "axios": "^1.9.0",
     "chromadb": "^1.7.3",
     "cookie-parser": "^1.4.7",

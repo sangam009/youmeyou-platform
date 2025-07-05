@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../../utils/logger.js';
 
 // Rate limiting configuration with call counter
@@ -16,7 +16,7 @@ const RATE_LIMIT = {
 const GOOGLE_GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
 const GEMINI_PRO_MODEL = "gemini-1.0-pro";
 const GEMINI_PRO_VISION_MODEL = "gemini-pro-vision";
-var genAI = null;
+let genAI = null;
 
 function generateGoogleGeminiClient() {
     if (!genAI) {
@@ -56,17 +56,24 @@ function getPromptResponse(model, prompt) {
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            let finalResponse = response.text().replace('```', "").replace('```', '').replace('json', '');
+            let finalResponse = response.text().replace(/```json|```/g, '').trim();
             
             logger.info('📥 Received response from Gemini model:', {
                 responseLength: finalResponse.length,
                 responsePreview: finalResponse.substring(0, 200) + '...'
             });
 
-            const text = JSON.parse(finalResponse);
+            // Try to parse as JSON, if it fails return as text
+            let parsedResponse;
+            try {
+                parsedResponse = JSON.parse(finalResponse);
+            } catch (parseError) {
+                logger.warn('⚠️ Response is not valid JSON, returning as text');
+                parsedResponse = finalResponse;
+            }
 
             return resolve({
-                "promptResponse": text
+                "promptResponse": parsedResponse
             });
         } catch (error) {
             logger.error('❌ Error in Gemini model response:', error);
