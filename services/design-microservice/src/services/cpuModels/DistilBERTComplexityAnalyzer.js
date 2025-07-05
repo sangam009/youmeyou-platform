@@ -9,23 +9,39 @@ export class DistilBERTComplexityAnalyzer {
     // Use the existing CPU models gateway that's already deployed
     this.gatewayEndpoint = process.env.CPU_MODELS_GATEWAY || 'http://cpu-models-gateway-prod:8000';
     this.isInitialized = false;
+    this.requestCount = 0;
+    this.successCount = 0;
+    this.fallbackCount = 0;
     
-    logger.info('🧠 DistilBERTComplexityAnalyzer connecting to existing CPU models gateway');
+    logger.info('🧠 DistilBERTComplexityAnalyzer connecting to existing CPU models gateway:', {
+      endpoint: this.gatewayEndpoint
+    });
     this.initializeModel();
   }
 
   async initializeModel() {
     try {
+      logger.info('🔍 Checking CPU models gateway availability...');
+      
       // Check if the CPU models gateway is available
       const response = await fetch(`${this.gatewayEndpoint}/health`);
       if (response.ok) {
         this.isInitialized = true;
-        logger.info('✅ CPU models gateway connected successfully');
+        logger.info('✅ CPU models gateway connected successfully:', {
+          endpoint: this.gatewayEndpoint,
+          status: response.status
+        });
       } else {
-        logger.warn('⚠️ CPU models gateway not available, will use fallback');
+        logger.warn('⚠️ CPU models gateway not available, will use fallback:', {
+          endpoint: this.gatewayEndpoint,
+          status: response.status
+        });
       }
     } catch (error) {
-      logger.warn('⚠️ CPU models gateway not reachable, using fallback analysis');
+      logger.warn('⚠️ CPU models gateway not reachable, using fallback analysis:', {
+        endpoint: this.gatewayEndpoint,
+        error: error.message
+      });
     }
   }
 
@@ -33,14 +49,32 @@ export class DistilBERTComplexityAnalyzer {
    * Analyze prompt complexity using DistilBERT model
    */
   async analyzeComplexity(prompt) {
+    this.requestCount++;
+    
+    logger.info('🧠 Starting complexity analysis:', {
+      requestCount: this.requestCount,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 100) + '...',
+      isInitialized: this.isInitialized,
+      endpoint: this.gatewayEndpoint
+    });
+
     if (!this.isInitialized) {
-      logger.info('🔄 Using fallback complexity analysis');
+      logger.warn('⚠️ CPU model not initialized, using fallback analysis');
+      this.fallbackCount++;
       return this.fallbackComplexityAnalysis(prompt);
     }
 
     try {
-      logger.info('🧠 Analyzing complexity with DistilBERT CPU model');
+      logger.info('🧠 Analyzing complexity with DistilBERT CPU model:', {
+        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
+        requestPayload: {
+          textLength: prompt.length,
+          textPreview: prompt.substring(0, 100) + '...'
+        }
+      });
       
+      const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/classify`, {
         method: 'POST',
         headers: {
@@ -51,11 +85,32 @@ export class DistilBERTComplexityAnalyzer {
         })
       });
 
+      const requestTime = Date.now() - requestStart;
+
       if (!response.ok) {
         throw new Error(`DistilBERT service error: ${response.status}`);
       }
 
       const result = await response.json();
+      this.successCount++;
+      
+      logger.info('✅ CPU model analysis completed successfully:', {
+        requestTime: `${requestTime}ms`,
+        responseData: {
+          complexity: result.complexity_score,
+          confidence: result.confidence,
+          categories: result.categories,
+          technicalDomains: result.technical_domains,
+          estimatedTokens: result.estimated_tokens,
+          processingTime: result.processing_time
+        },
+        statistics: {
+          totalRequests: this.requestCount,
+          successCount: this.successCount,
+          fallbackCount: this.fallbackCount,
+          successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`
+        }
+      });
       
       const analysis = {
         complexity: result.complexity_score || 0.5,
@@ -64,7 +119,12 @@ export class DistilBERTComplexityAnalyzer {
         technicalDomains: result.technical_domains || [],
         estimatedTokens: result.estimated_tokens || 100,
         processingTime: result.processing_time || 0,
-        source: 'distilbert-cpu-model'
+        source: 'distilbert-cpu-model',
+        requestTime,
+        metadata: {
+          endpoint: this.gatewayEndpoint,
+          timestamp: new Date().toISOString()
+        }
       };
 
       // Add agent recommendations if this is an agent selection prompt
@@ -75,7 +135,12 @@ export class DistilBERTComplexityAnalyzer {
       return analysis;
 
     } catch (error) {
-      logger.error('❌ DistilBERT complexity analysis failed:', error);
+      logger.error('❌ DistilBERT complexity analysis failed:', {
+        error: error.message,
+        endpoint: this.gatewayEndpoint,
+        fallbackCount: this.fallbackCount + 1
+      });
+      this.fallbackCount++;
       return this.fallbackComplexityAnalysis(prompt);
     }
   }
@@ -84,11 +149,27 @@ export class DistilBERTComplexityAnalyzer {
    * Classify prompt intent using DistilBERT
    */
   async classifyIntent(prompt) {
+    this.requestCount++;
+    
+    logger.info('🎯 Starting intent classification:', {
+      requestCount: this.requestCount,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 100) + '...',
+      isInitialized: this.isInitialized
+    });
+
     if (!this.isInitialized) {
+      logger.warn('⚠️ CPU model not initialized, using fallback intent classification');
+      this.fallbackCount++;
       return this.fallbackIntentClassification(prompt);
     }
 
     try {
+      logger.info('🎯 Classifying intent with DistilBERT CPU model:', {
+        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/intent`
+      });
+
+      const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/intent`, {
         method: 'POST',
         headers: {
@@ -100,7 +181,25 @@ export class DistilBERTComplexityAnalyzer {
         })
       });
 
+      const requestTime = Date.now() - requestStart;
+
+      if (!response.ok) {
+        throw new Error(`DistilBERT intent service error: ${response.status}`);
+      }
+
       const result = await response.json();
+      this.successCount++;
+      
+      logger.info('✅ Intent classification completed successfully:', {
+        requestTime: `${requestTime}ms`,
+        responseData: {
+          intent: result.primary_intent,
+          confidence: result.confidence,
+          secondaryIntents: result.secondary_intents,
+          actionRequired: result.action_required,
+          urgency: result.urgency_level
+        }
+      });
       
       return {
         intent: result.primary_intent || 'general',
@@ -108,11 +207,20 @@ export class DistilBERTComplexityAnalyzer {
         secondaryIntents: result.secondary_intents || [],
         actionRequired: result.action_required || false,
         urgency: result.urgency_level || 'normal',
-        source: 'distilbert-cpu-model'
+        source: 'distilbert-cpu-model',
+        requestTime,
+        metadata: {
+          endpoint: this.gatewayEndpoint,
+          timestamp: new Date().toISOString()
+        }
       };
 
     } catch (error) {
-      logger.error('❌ DistilBERT intent classification failed:', error);
+      logger.error('❌ DistilBERT intent classification failed:', {
+        error: error.message,
+        endpoint: this.gatewayEndpoint
+      });
+      this.fallbackCount++;
       return this.fallbackIntentClassification(prompt);
     }
   }
@@ -121,11 +229,27 @@ export class DistilBERTComplexityAnalyzer {
    * Analyze technical domains using DistilBERT
    */
   async analyzeTechnicalDomains(prompt) {
+    this.requestCount++;
+    
+    logger.info('🔧 Starting technical domain analysis:', {
+      requestCount: this.requestCount,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 100) + '...',
+      isInitialized: this.isInitialized
+    });
+
     if (!this.isInitialized) {
+      logger.warn('⚠️ CPU model not initialized, using fallback domain analysis');
+      this.fallbackCount++;
       return this.fallbackDomainAnalysis(prompt);
     }
 
     try {
+      logger.info('🔧 Analyzing domains with DistilBERT CPU model:', {
+        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/domains`
+      });
+
+      const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/domains`, {
         method: 'POST',
         headers: {
@@ -137,7 +261,25 @@ export class DistilBERTComplexityAnalyzer {
         })
       });
 
+      const requestTime = Date.now() - requestStart;
+
+      if (!response.ok) {
+        throw new Error(`DistilBERT domain service error: ${response.status}`);
+      }
+
       const result = await response.json();
+      this.successCount++;
+      
+      logger.info('✅ Domain analysis completed successfully:', {
+        requestTime: `${requestTime}ms`,
+        responseData: {
+          primaryDomain: result.primary_domain,
+          domains: result.domains,
+          confidence: result.confidence,
+          requiredSkills: result.required_skills,
+          estimatedAgents: result.estimated_agents
+        }
+      });
       
       return {
         primaryDomain: result.primary_domain || 'general',
@@ -145,11 +287,20 @@ export class DistilBERTComplexityAnalyzer {
         confidence: result.confidence || 0.5,
         requiredSkills: result.required_skills || [],
         estimatedAgents: result.estimated_agents || 1,
-        source: 'distilbert-cpu-model'
+        source: 'distilbert-cpu-model',
+        requestTime,
+        metadata: {
+          endpoint: this.gatewayEndpoint,
+          timestamp: new Date().toISOString()
+        }
       };
 
     } catch (error) {
-      logger.error('❌ DistilBERT domain analysis failed:', error);
+      logger.error('❌ DistilBERT domain analysis failed:', {
+        error: error.message,
+        endpoint: this.gatewayEndpoint
+      });
+      this.fallbackCount++;
       return this.fallbackDomainAnalysis(prompt);
     }
   }
@@ -158,7 +309,11 @@ export class DistilBERTComplexityAnalyzer {
    * Fallback complexity analysis when CPU model is not available
    */
   fallbackComplexityAnalysis(prompt) {
-    logger.info('🔄 Using fallback complexity analysis');
+    logger.warn('🔄 Using fallback complexity analysis - CPU model bypassed:', {
+      reason: 'CPU model not available',
+      fallbackCount: this.fallbackCount,
+      promptLength: prompt.length
+    });
     
     const length = prompt.length;
     let complexity = 0.3;
@@ -179,15 +334,24 @@ export class DistilBERTComplexityAnalyzer {
     complexity += matches * 0.05;
     complexity = Math.min(complexity, 1.0);
     
-    return {
+    const fallbackResult = {
       complexity,
       confidence: 0.6,
       categories: ['fallback-analysis'],
       technicalDomains: [],
       estimatedTokens: Math.min(length * 0.75, 1000),
       processingTime: 0,
-      source: 'fallback-analysis'
+      source: 'fallback-analysis',
+      metadata: {
+        keywordMatches: matches,
+        matchedKeywords: complexKeywords.filter(keyword => 
+          prompt.toLowerCase().includes(keyword)
+        )
+      }
     };
+
+    logger.info('📊 Fallback analysis result:', fallbackResult);
+    return fallbackResult;
   }
 
   /**
@@ -302,19 +466,19 @@ export class DistilBERTComplexityAnalyzer {
         return {
           status: 'fallback',
           model: 'distilbert-base-uncased',
-          endpoint: this.modelEndpoint,
+          endpoint: this.gatewayEndpoint,
           lastCheck: new Date().toISOString(),
           capabilities: ['fallback-complexity-analysis']
         };
       }
 
-      const response = await fetch(`${this.modelEndpoint}/status`);
+      const response = await fetch(`${this.gatewayEndpoint}/status`);
       const status = await response.json();
       
       return {
         status: 'active',
         model: status.model || 'distilbert-base-uncased',
-        endpoint: this.modelEndpoint,
+        endpoint: this.gatewayEndpoint,
         lastCheck: new Date().toISOString(),
         capabilities: [
           'complexity-analysis',
@@ -327,7 +491,7 @@ export class DistilBERTComplexityAnalyzer {
       return {
         status: 'error',
         error: error.message,
-        endpoint: this.modelEndpoint,
+        endpoint: this.gatewayEndpoint,
         lastCheck: new Date().toISOString()
       };
     }

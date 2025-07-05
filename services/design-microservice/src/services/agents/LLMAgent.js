@@ -1,16 +1,82 @@
-import { GoogleGenAI } from '@google/genai';
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 import logger from '../../utils/logger.js';
 
-// Rate limiting configuration
+// Rate limiting configuration with call counter
 const RATE_LIMIT = {
-  requestsPerMinute: 50,
+  requestsPerMinute: 100, // Higher limit for gemini-1.0-pro
   requestQueue: [],
   lastRequestTime: null,
-  minRequestInterval: 60000 / 50,
+  minRequestInterval: 60000 / 100,
+  totalCalls: 0,
+  callsThisMinute: 0,
+  resetTime: Date.now() + 60000
 };
 
+// Gemini model configuration
+const GOOGLE_GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY;
+const GEMINI_PRO_MODEL = "gemini-1.0-pro";
+const GEMINI_PRO_VISION_MODEL = "gemini-pro-vision";
+var genAI = null;
+
+function generateGoogleGeminiClient() {
+    if (!genAI) {
+        genAI = new GoogleGenerativeAI(GOOGLE_GEMINI_API_KEY);
+    }
+    return genAI;
+}
+
+function getGeminiProModel() {
+    return genAI.getGenerativeModel({ model: GEMINI_PRO_MODEL });
+}
+
+function getGeminiProVisionModel() {
+    return genAI.getGenerativeModel({ 
+        model: GEMINI_PRO_VISION_MODEL, 
+        generationConfig: { 
+            "temperature": 0.2, 
+            maxOutputTokens: 1000000 
+        } 
+    });
+}
+
+function getPromptResponse(model, prompt) {
+    return new Promise(async (resolve, reject) => {
+        if (!model) {
+            return reject(new Error("model is not defined"));
+        }
+        if (!prompt) {
+            return reject(new Error("prompt is empty"));
+        }
+        try {
+            logger.info('📤 Sending request to Gemini model:', {
+                model: model.model,
+                promptLength: prompt.length,
+                promptPreview: prompt.substring(0, 200) + '...'
+            });
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            let finalResponse = response.text().replace('```', "").replace('```', '').replace('json', '');
+            
+            logger.info('📥 Received response from Gemini model:', {
+                responseLength: finalResponse.length,
+                responsePreview: finalResponse.substring(0, 200) + '...'
+            });
+
+            const text = JSON.parse(finalResponse);
+
+            return resolve({
+                "promptResponse": text
+            });
+        } catch (error) {
+            logger.error('❌ Error in Gemini model response:', error);
+            return reject(error);
+        }
+    });
+}
+
 /**
- * LLM Agent - Powered by Gemini Pro for reliable responses
+ * LLM Agent - Powered by Gemini Pro for reliable responses with higher rate limits
  * This agent is used by specialized agents for LLM-powered tasks
  * Implements singleton pattern to prevent multiple instances
  */
@@ -31,21 +97,40 @@ export class LLMAgent {
     }
 
     // Initialize Gemini LLM connection
-    if (!process.env.GOOGLE_AI_KEY) {
-      throw new Error('GOOGLE_AI_KEY environment variable is required for LLMAgent');
+    if (!GOOGLE_GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY or GOOGLE_AI_KEY environment variable is required for LLMAgent');
     }
 
-    this.genAI = new GoogleGenAI({
-      apiKey: process.env.GOOGLE_AI_KEY,
-    });
+    this.genAI = generateGoogleGeminiClient();
+    this.model = getGeminiProModel();
     
     // Conversation memory for context continuity
     this.conversationHistory = new Map();
     
-    logger.info('🤖 LLMAgent initialized with Gemini 2.5 Pro and real LLM connection');
+    logger.info('🤖 LLMAgent initialized with Gemini 1.0 Pro and higher rate limits');
     this.testConnection();
 
     LLMAgent.#instance = this;
+  }
+
+  // Update call counter
+  updateCallCounter() {
+    const now = Date.now();
+    
+    // Reset minute counter if needed
+    if (now > RATE_LIMIT.resetTime) {
+      RATE_LIMIT.callsThisMinute = 0;
+      RATE_LIMIT.resetTime = now + 60000;
+    }
+    
+    RATE_LIMIT.totalCalls++;
+    RATE_LIMIT.callsThisMinute++;
+    
+    logger.info('📊 LLM Call Statistics:', {
+      totalCalls: RATE_LIMIT.totalCalls,
+      callsThisMinute: RATE_LIMIT.callsThisMinute,
+      remainingThisMinute: RATE_LIMIT.requestsPerMinute - RATE_LIMIT.callsThisMinute
+    });
   }
 
   async rateLimitedRequest(requestFn) {
@@ -60,11 +145,13 @@ export class LLMAgent {
     if (RATE_LIMIT.requestQueue.length >= RATE_LIMIT.requestsPerMinute) {
       const oldestRequest = RATE_LIMIT.requestQueue[0];
       const waitTime = 60000 - (now - oldestRequest);
+      logger.warn(`⏳ Rate limit reached, waiting ${waitTime}ms`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
-    // Add current request to queue
+    // Add current request to queue and update counter
     RATE_LIMIT.requestQueue.push(now);
+    this.updateCallCounter();
     
     // Execute request
     return await requestFn();
@@ -72,43 +159,18 @@ export class LLMAgent {
 
   async testConnection() {
     try {
-      const config = {
-        thinkingConfig: {
-          thinkingBudget: -1,
-        },
-        responseMimeType: 'text/plain',
-      };
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: 'Respond with "LLM connection successful"',
-            },
-          ],
-        },
-      ];
-
+      logger.info('🔍 Testing LLM connection...');
+      
       const result = await this.rateLimitedRequest(async () => {
-        return await this.genAI.models.generateContentStream({
-          model: 'gemini-2.5-pro',
-          config,
-          contents,
-        });
+        return await getPromptResponse(this.model, 'Respond with "LLM connection successful"');
       });
 
-      let response = '';
-      for await (const chunk of result) {
-        response += chunk.text;
-      }
-
-      logger.info('✅ LLM connection test successful:', response);
+      logger.info('✅ LLM connection test successful:', result);
       return true;
     } catch (error) {
       logger.error('❌ LLM connection test failed:', error);
       if (error.message.includes('PERMISSION_DENIED')) {
-        logger.error('🔑 API key validation failed. Please check your GOOGLE_AI_KEY.');
+        logger.error('🔑 API key validation failed. Please check your GEMINI_API_KEY.');
       } else if (error.message.includes('RESOURCE_EXHAUSTED')) {
         logger.error('⚠️ API quota exceeded. Please check your usage limits.');
       }
@@ -121,47 +183,33 @@ export class LLMAgent {
    */
   async execute(userQuery, context = {}) {
     try {
-      logger.info('🧠 LLMAgent executing task:', userQuery.substring(0, 100));
-      
-      const config = {
-        thinkingConfig: {
-          thinkingBudget: -1,
-        },
-        responseMimeType: 'text/plain',
-      };
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: userQuery,
-            },
-          ],
-        },
-      ];
-
-      const result = await this.rateLimitedRequest(async () => {
-        return await this.genAI.models.generateContentStream({
-          model: 'gemini-2.5-pro',
-          config,
-          contents,
-        });
+      logger.info('🧠 LLMAgent executing task:', {
+        queryLength: userQuery.length,
+        queryPreview: userQuery.substring(0, 100) + '...',
+        contextKeys: Object.keys(context)
       });
-
-      let response = '';
-      for await (const chunk of result) {
-        response += chunk.text;
-      }
+      
+      const result = await this.rateLimitedRequest(async () => {
+        return await getPromptResponse(this.model, userQuery);
+      });
+      
+      const response = result.promptResponse || result;
+      
+      logger.info('✅ LLM execution completed:', {
+        responseType: typeof response,
+        responseLength: JSON.stringify(response).length,
+        responsePreview: JSON.stringify(response).substring(0, 200) + '...'
+      });
       
       return {
         content: response,
         analysis: 'LLM-powered analysis completed',
-        suggestions: this.extractSuggestions(response),
+        suggestions: this.extractSuggestions(JSON.stringify(response)),
         metadata: {
-          model: 'gemini-2.5-pro',
-          tokens: response.length,
-          timestamp: new Date().toISOString()
+          model: GEMINI_PRO_MODEL,
+          tokens: JSON.stringify(response).length,
+          timestamp: new Date().toISOString(),
+          callCount: RATE_LIMIT.totalCalls
         }
       };
       
@@ -180,74 +228,39 @@ export class LLMAgent {
         throw new Error('Task must be a non-empty string');
       }
 
-      logger.info(`🤝 LLMAgent collaborating with ${agentName} on task:`, task);
-      
-      const config = {
-        thinkingConfig: {
-          thinkingBudget: -1,
-        },
-        responseMimeType: 'text/plain',
-      };
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: task,
-            },
-          ],
-        },
-      ];
-
-      logger.info(`📤 Sending request to LLM for ${agentName}:`, {
-        model: 'gemini-2.5-pro',
-        config,
-        contents: contents.map(c => ({ ...c, parts: c.parts.map(p => p.text) }))
+      logger.info(`🤝 LLMAgent collaborating with ${agentName}:`, {
+        taskLength: task.length,
+        taskPreview: task.substring(0, 200) + '...',
+        contextKeys: Object.keys(context)
       });
 
-      const streamResult = await this.rateLimitedRequest(async () => {
-        return await this.genAI.models.generateContentStream({
-          model: 'gemini-2.5-pro',
-          config,
-          contents,
-        });
+      const result = await this.rateLimitedRequest(async () => {
+        return await getPromptResponse(this.model, task);
       });
 
-      let response = '';
-      let chunkCount = 0;
-      for await (const chunk of streamResult) {
-        if (chunk && chunk.text) {
-          response += chunk.text;
-          chunkCount++;
-          logger.info(`📥 Received chunk ${chunkCount} from LLM:`, {
-            chunkText: chunk.text.substring(0, 100) + '...',
-            chunkLength: chunk.text.length,
-            totalResponseLength: response.length
-          });
-        }
-      }
+      const response = result.promptResponse || result;
+      const responseText = typeof response === 'string' ? response : JSON.stringify(response);
       
       logger.info(`✅ LLM collaboration complete for ${agentName}:`, {
-        responseLength: response.length,
-        totalChunks: chunkCount,
-        previewResponse: response.substring(0, 200) + '...'
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 200) + '...',
+        responseType: typeof response
       });
       
       // Store conversation for context
-      this.storeConversation(agentName, task, response);
+      this.storeConversation(agentName, task, responseText);
       
       const collaborationResult = {
         agentCollaboration: agentName,
-        response: response || 'No response generated',
-        analysis: this.analyzeResponse(response || '', agentName),
-        nextSteps: this.generateNextSteps(response || '', agentName),
+        response: responseText,
+        analysis: this.analyzeResponse(responseText, agentName),
+        nextSteps: this.generateNextSteps(responseText, agentName),
         metadata: {
           collaboratingAgent: agentName,
-          model: 'gemini-2.5-pro',
+          model: GEMINI_PRO_MODEL,
           timestamp: new Date().toISOString(),
-          chunkCount,
-          responseLength: response.length
+          responseLength: responseText.length,
+          callCount: RATE_LIMIT.totalCalls
         }
       };
 

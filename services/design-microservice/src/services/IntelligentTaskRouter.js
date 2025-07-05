@@ -32,7 +32,7 @@ export class IntelligentTaskRouter {
       });
       
       // Step 1: Analyze prompt complexity and intent
-      const analysis = await this.analyzePromptComplexity(userPrompt);
+      const analysis = await this.analyzeTaskComplexity(userPrompt);
       
       logger.info('📊 Complexity analysis result:', {
         complexity: analysis.complexity,
@@ -57,77 +57,110 @@ export class IntelligentTaskRouter {
   /**
    * AI-POWERED prompt complexity analysis using CPU models and LLM
    */
-  async analyzePromptComplexity(prompt) {
+  async analyzeTaskComplexity(prompt) {
     try {
-      logger.info('🧠 Using AI-powered complexity analysis with DistilBERT + LLM');
-      
-      // Step 1: Use DistilBERT CPU model for initial analysis
-      const [complexityResult, intentResult, domainResult] = await Promise.all([
-        this.complexityAnalyzer.analyzeComplexity(prompt),
-        this.complexityAnalyzer.classifyIntent(prompt),
-        this.complexityAnalyzer.analyzeTechnicalDomains(prompt)
-      ]);
-
-      logger.info('📊 CPU model analysis results:', {
-        complexity: complexityResult.complexity,
-        intent: intentResult.intent,
-        domains: domainResult.domains
+      logger.info('🔍 Starting task complexity analysis:', {
+        promptLength: prompt.length,
+        promptPreview: prompt.substring(0, 100) + '...',
+        timestamp: new Date().toISOString()
       });
 
-      // Step 2: Use LLM for deeper analysis if complexity is high
-      let llmEnhancement = null;
-      if (complexityResult.complexity >= 0.6) {
-        logger.info('🤖 Using LLM for enhanced complexity analysis');
-        llmEnhancement = await this.llmAgent.collaborateWithAgent(
-          'complexityAnalyzer',
-          `Analyze this complex technical request and provide detailed breakdown: "${prompt}"`,
-          {
-            cpuAnalysis: { complexityResult, intentResult, domainResult },
-            analysisType: 'complexity_enhancement'
-          }
-        );
+      logger.info('🧠 Using AI-powered complexity analysis with DistilBERT + LLM');
+      
+      // STEP 1: CPU Model Analysis (DistilBERT)
+      logger.info('🧠 Analyzing complexity with DistilBERT CPU model');
+      const cpuAnalysis = await this.complexityAnalyzer.analyzeComplexity(prompt);
+      
+      logger.info('📊 CPU model analysis results:', {
+        complexity: cpuAnalysis.complexity,
+        confidence: cpuAnalysis.confidence,
+        source: cpuAnalysis.source,
+        domains: cpuAnalysis.technicalDomains || [],
+        intent: cpuAnalysis.intent || 'general',
+        processingTime: cpuAnalysis.processingTime || 0,
+        requestTime: cpuAnalysis.requestTime || 0
+      });
+
+      // Check if CPU model was bypassed
+      if (cpuAnalysis.source === 'fallback-analysis') {
+        logger.warn('⚠️ CPU MODEL BYPASSED - Using fallback analysis instead of DistilBERT');
       }
 
-      // Step 3: Combine CPU model + LLM results
-      const analysis = {
-        complexity: complexityResult.complexity,
-        confidence: complexityResult.confidence,
-        intent: intentResult.intent,
-        requiredSkills: domainResult.requiredSkills,
-        taskType: this.mapIntentToTaskType(intentResult.intent),
-        subTasks: [],
-        estimatedSteps: domainResult.estimatedAgents,
-        aiAnalysis: {
-          cpuModel: {
-            source: complexityResult.source,
-            processingTime: complexityResult.processingTime,
-            technicalDomains: complexityResult.technicalDomains
-          },
-          llmEnhancement: llmEnhancement ? {
-            analysis: llmEnhancement.analysis,
-            nextSteps: llmEnhancement.nextSteps
-          } : null
-        }
-      };
+      // STEP 2: LLM Enhancement (if needed for complex tasks)
+      let finalAnalysis = cpuAnalysis;
+      
+      if (cpuAnalysis.complexity > 0.7 || cpuAnalysis.source === 'fallback-analysis') {
+        logger.info('🤖 Enhancing analysis with LLM due to high complexity or fallback');
+        
+        try {
+          const { LLMAgent } = await import('./agents/LLMAgent.js');
+          const llmAgent = LLMAgent.getInstance();
+          
+          const enhancementPrompt = `
+Analyze this task for complexity and required skills:
+"${prompt}"
 
-      // Step 4: Generate sub-tasks using LLM if complex
-      if (analysis.complexity >= this.complexityThreshold) {
-        analysis.subTasks = await this.generateIntelligentSubTasks(prompt, analysis);
+Current CPU analysis: ${JSON.stringify(cpuAnalysis)}
+
+Provide analysis in this JSON format:
+{
+  "complexity": 0.8,
+  "confidence": 0.9,
+  "intent": "architecture_design",
+  "requiredSkills": ["system_design", "microservices"],
+  "subTaskCount": 3,
+  "reasoning": "explanation"
+}`;
+
+          const llmResponse = await llmAgent.execute(enhancementPrompt);
+          
+          logger.info('🤖 LLM enhancement completed:', {
+            llmResponse: llmResponse.content,
+            model: llmResponse.metadata?.model
+          });
+          
+          // Merge CPU and LLM analysis
+          finalAnalysis = {
+            ...cpuAnalysis,
+            complexity: llmResponse.content.complexity || cpuAnalysis.complexity,
+            confidence: Math.max(cpuAnalysis.confidence, llmResponse.content.confidence || 0),
+            intent: llmResponse.content.intent || cpuAnalysis.intent || 'general',
+            requiredSkills: llmResponse.content.requiredSkills || [],
+            subTaskCount: llmResponse.content.subTaskCount || 0,
+            enhancedByLLM: true,
+            llmReasoning: llmResponse.content.reasoning
+          };
+          
+        } catch (llmError) {
+          logger.error('❌ LLM enhancement failed:', llmError);
+          finalAnalysis.llmEnhancementFailed = true;
+        }
       }
 
       logger.info('✅ AI-powered analysis complete:', {
-        complexity: analysis.complexity,
-        confidence: analysis.confidence,
-        intent: analysis.intent,
-        requiredSkills: analysis.requiredSkills,
-        subTaskCount: analysis.subTasks.length
+        complexity: finalAnalysis.complexity,
+        confidence: finalAnalysis.confidence,
+        intent: finalAnalysis.intent || 'general',
+        requiredSkills: finalAnalysis.requiredSkills || [],
+        subTaskCount: finalAnalysis.subTaskCount || 0,
+        source: finalAnalysis.source,
+        enhancedByLLM: finalAnalysis.enhancedByLLM || false,
+        cpuModelBypassed: finalAnalysis.source === 'fallback-analysis'
       });
 
-      return analysis;
-
+      return finalAnalysis;
+      
     } catch (error) {
-      logger.error('❌ AI-powered analysis failed, using fallback:', error);
-      return this.fallbackAnalysis(prompt);
+      logger.error('❌ Task complexity analysis failed:', error);
+      return {
+        complexity: 0.5,
+        confidence: 0.3,
+        intent: 'general',
+        requiredSkills: [],
+        subTaskCount: 0,
+        error: error.message,
+        source: 'error-fallback'
+      };
     }
   }
 
