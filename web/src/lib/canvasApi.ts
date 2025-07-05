@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { A2AStreamingService } from './a2aStreaming';
+import { config } from '../config';
 
 // Determine the base URL based on the current hostname
 const getBaseUrl = () => {
@@ -15,29 +16,116 @@ const getBaseUrl = () => {
   return 'https://youmeyou.ai';
 };
 
-// Helper function to get the correct endpoint path
-const getEndpoint = (path: string) => {
-  if (typeof window === 'undefined') return path;
-  
-  const hostname = window.location.hostname;
-  if (hostname.includes('localhost')) {
-    return path; // Direct service access in local dev
-  }
-  return `/api/design${path}`; // Through nginx proxy in production/staging
-};
+// Get API endpoint path
+const getEndpoint = (path: string) => `/api/design${path}`;
 
+// Create API instance
 const api = axios.create({
   baseURL: getBaseUrl(),
-  withCredentials: true,
+  withCredentials: true
 });
 
-interface StreamingOptions {
-  onProgress?: (progress: number) => void;
+// Initialize A2A streaming service
+export const streamingService = new A2AStreamingService();
+
+// Types
+export interface AgentRequest {
+  content: string;
+  canvasState?: {
+    nodes: any[];
+    edges: any[];
+  };
+  component?: any;
+}
+
+export interface StreamingOptions {
+  onMessage?: (data: any) => void;
   onError?: (error: any) => void;
   onComplete?: (result: any) => void;
+  onProgress?: (progress: number) => void;
   onCanvasUpdate?: (canvasData: any) => void;
-  onCodeUpdate?: (codeData: any) => void;
 }
+
+export interface StreamingData {
+  content?: string;
+  actions?: Array<{
+    type: string;
+    status: 'ready' | 'completed' | 'failed';
+    data?: any;
+  }>;
+  progress?: number;
+  type?: string;
+}
+
+export interface StreamingResult {
+  actions?: Array<{
+    type: string;
+    status: 'ready' | 'completed' | 'failed';
+    data?: any;
+  }>;
+  content?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CanvasData {
+  nodes?: Array<any>;
+  edges?: Array<any>;
+  metadata?: Record<string, any>;
+}
+
+// API functions
+export const canvasApi = {
+  // Get project canvases
+  async getProjectCanvases(projectId: string) {
+    const response = await api.get(getEndpoint(`/canvas/project/${projectId}`));
+    return response.data;
+  },
+
+  // Start streaming session using A2A SDK
+  async startStreaming(task: string, clientId: string, projectId: string) {
+    return streamingService.startStreamingExecution({
+      id: `${projectId}-${clientId}`,
+      prompt: task,
+      projectId,
+      clientId
+    });
+  },
+
+  // Start architecture design using A2A SDK
+  startArchitectureDesign: async (request: ArchitectureRequest) => {
+    try {
+      return streamingService.startArchitectureDesign(
+        request.clientId, 
+        `Design architecture for ${request.projectType}: ${JSON.stringify(request.requirements)}`
+      );
+    } catch (error) {
+      console.error('Error starting architecture design:', error);
+      throw error;
+    }
+  },
+
+  // Get architecture by canvas ID
+  getArchitecture: async (canvasId: string): Promise<ArchitectureData | null> => {
+    try {
+      const response = await api.get(getEndpoint(`/canvas/architecture/${canvasId}`));
+      return response.data;
+    } catch (error) {
+      console.error('Error getting architecture:', error);
+      throw error;
+    }
+  },
+
+  // Update architecture
+  updateArchitecture: async (canvasId: string, architectureData: Partial<ArchitectureData>) => {
+    try {
+      const response = await api.put(getEndpoint(`/canvas/architecture/${canvasId}`), architectureData);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating architecture:', error);
+      throw error;
+    }
+  }
+};
 
 interface ArchitectureData {
   systemPatterns: Array<{
@@ -72,37 +160,31 @@ interface ArchitectureRequest {
   clientId: string;
 }
 
-interface AgentRequest {
-  content: string;
-  canvasState?: any;
-  component?: any;
-  // Removed agentId and type - backend will intelligently analyze and route
-}
-
-// Initialize A2A streaming service
-const streamingService = new A2AStreamingService();
-
 // Agent functions
-export const askAgent = async (request: AgentRequest) => {
+export const askAgent = (request: AgentRequest): EventSource => {
   try {
-    console.log('🤖 askAgent function called with request:', request);
+    console.log('🤖 Starting streaming agent request:', request);
     
     // Validate request parameters
     if (!request.content) {
       throw new Error('Content is required for agent request');
     }
-    
-    // No need for type parameter - backend will intelligently analyze the prompt
-    const requestWithDefaults = {
-      ...request
-    };
-    
-    console.log('📤 Sending request to agent endpoint:', getEndpoint('/agents/ask'));
-    const response = await api.post(getEndpoint('/agents/ask'), requestWithDefaults);
-    console.log('✅ Agent response received:', response.data);
-    return response.data;
+
+    // Create query parameters
+    const params = new URLSearchParams();
+    params.append('data', JSON.stringify(request));
+
+    // Create EventSource for streaming
+    const eventSource = new EventSource(
+      `${getBaseUrl()}${getEndpoint('/agents/ask')}?${params.toString()}`,
+      { withCredentials: true }
+    );
+
+    console.log('📡 Established streaming connection to:', eventSource.url);
+    return eventSource;
+
   } catch (error) {
-    console.error('❌ Error asking agent:', error);
+    console.error('❌ Error setting up agent streaming:', error);
     throw error;
   }
 };
@@ -144,85 +226,31 @@ export const startArchitectureDesign = (canvasId: string, requirements: string, 
   return streamingService.startArchitectureDesign(canvasId, requirements, options);
 };
 
-const canvasApi = {
-  // Get canvas by ID
-  async getCanvas(canvasId: string) {
-    const response = await api.get(getEndpoint(`/canvas/${canvasId}`));
-    return response.data;
-  },
+// Get canvas by ID
+async function getCanvas(canvasId: string) {
+  const response = await api.get(getEndpoint(`/canvas/${canvasId}`));
+  return response.data;
+}
 
-  // Create new canvas
-  async createCanvas(projectId: string, data: any) {
-    const response = await api.post(getEndpoint('/canvas'), {
-      projectId,
-      ...data
-    });
-    return response.data;
-  },
+// Create new canvas
+async function createCanvas(projectId: string, data: any) {
+  const response = await api.post(getEndpoint('/canvas'), {
+    projectId,
+    ...data
+  });
+  return response.data;
+}
 
-  // Update canvas
-  async updateCanvas(canvasId: string, data: any) {
-    const response = await api.put(getEndpoint(`/canvas/${canvasId}`), data);
-    return response.data;
-  },
+// Update canvas
+async function updateCanvas(canvasId: string, data: any) {
+  const response = await api.put(getEndpoint(`/canvas/${canvasId}`), data);
+  return response.data;
+}
 
-  // Delete canvas
-  async deleteCanvas(canvasId: string) {
-    const response = await api.delete(getEndpoint(`/canvas/${canvasId}`));
-    return response.data;
-  },
-
-  // Get project canvases
-  async getProjectCanvases(projectId: string) {
-    const response = await api.get(getEndpoint(`/canvas/project/${projectId}`));
-    return response.data;
-  },
-
-  // Start streaming session using A2A SDK
-  async startStreaming(task: string, clientId: string, projectId: string) {
-    return streamingService.startStreamingExecution({
-      id: `${projectId}-${clientId}`,
-      prompt: task,
-      type: 'STREAMING_SESSION',
-      projectId,
-      clientId
-    });
-  },
-
-  // Start architecture design using A2A SDK
-  startArchitectureDesign: async (request: ArchitectureRequest) => {
-    try {
-      return streamingService.startArchitectureDesign(
-        request.clientId, 
-        `Design architecture for ${request.projectType}: ${JSON.stringify(request.requirements)}`
-      );
-    } catch (error) {
-      console.error('Error starting architecture design:', error);
-      throw error;
-    }
-  },
-
-  // Get architecture by canvas ID
-  getArchitecture: async (canvasId: string): Promise<ArchitectureData | null> => {
-    try {
-      const response = await api.get(getEndpoint(`/canvas/architecture/${canvasId}`));
-      return response.data;
-    } catch (error) {
-      console.error('Error getting architecture:', error);
-      throw error;
-    }
-  },
-
-  // Update architecture
-  updateArchitecture: async (canvasId: string, architectureData: Partial<ArchitectureData>) => {
-    try {
-      const response = await api.put(getEndpoint(`/canvas/architecture/${canvasId}`), architectureData);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating architecture:', error);
-      throw error;
-    }
-  }
-};
+// Delete canvas
+async function deleteCanvas(canvasId: string) {
+  const response = await api.delete(getEndpoint(`/canvas/${canvasId}`));
+  return response.data;
+}
 
 export default canvasApi; 

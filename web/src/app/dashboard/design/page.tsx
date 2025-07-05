@@ -4,7 +4,7 @@ import React, { useState, useCallback, useContext, useRef, useEffect } from 'rea
 import { ReactFlow, Background, Controls, MiniMap, Node, Edge, Connection, addEdge, useNodesState, useEdgesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { WorkspaceContext } from '../layout';
-import { setupA2AStream } from '@/lib/a2aStreaming';
+import { streamingService, StreamingData, StreamingResult, CanvasData } from '@/lib/canvasApi';
 import logger from '@/lib/logger';
 import { 
   PlusIcon, 
@@ -22,7 +22,6 @@ import {
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { getWorkspaces } from '@/lib/dashboardApi';
-import { askAgent } from '@/lib/canvasApi';
 
 // Message types
 interface ChatMessage {
@@ -377,9 +376,9 @@ function DesignCanvasPage() {
   const handleSendMessage = useCallback(async () => {
     if (!chatInput.trim() || isAgentTyping) return;
 
-    const userMessage = {
+    const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      type: 'user' as const,
+      type: 'user',
       content: chatInput,
       timestamp: new Date()
     };
@@ -402,23 +401,25 @@ function DesignCanvasPage() {
       const streamingMessageId = (Date.now() + 1).toString();
       setChatMessages(prev => [...prev, {
         id: streamingMessageId,
-        type: 'agent' as const,
+        type: 'agent',
         content: '',
         timestamp: new Date(),
         isStreaming: true
-      }]);
+      } as ChatMessage]);
 
-      // Setup streaming
-      const streamUrl = new URL('/api/design/chat/stream', window.location.origin);
-      streamUrl.searchParams.append('content', chatInput);
-      streamUrl.searchParams.append('canvasState', JSON.stringify({ nodes, edges }));
-      if (agentContext) {
-        streamUrl.searchParams.append('context', JSON.stringify(agentContext));
-      }
-
-      const eventSource = setupA2AStream(streamUrl.toString(), {
-        onMessage: (data) => {
-          // Update streaming message content
+      // Use A2A streaming service
+      const cleanup = await streamingService.startStreamingExecution({
+        id: streamingMessageId,
+        prompt: chatInput,
+        type: agentContext ? 'COMPONENT_ANALYSIS' : 'GENERAL_CHAT',
+        canvasId: activeWorkspace?.id,
+        architecture: {
+          nodes,
+          edges,
+          component: agentContext
+        }
+      }, {
+        onMessage: (data: StreamingData) => {
           setChatMessages(prev => prev.map(msg => 
             msg.id === streamingMessageId
               ? {
@@ -429,10 +430,9 @@ function DesignCanvasPage() {
               : msg
           ));
         },
-        onError: (error) => {
+        onError: (error: Error) => {
           logger.error('❌ Streaming chat error:', error);
           
-          // Update streaming message to show error
           setChatMessages(prev => prev.map(msg => 
             msg.id === streamingMessageId
               ? {
@@ -445,40 +445,44 @@ function DesignCanvasPage() {
           ));
           setIsAgentTyping(false);
         },
-        onComplete: () => {
-          // Mark streaming as complete
+        onComplete: (result: StreamingResult) => {
           setChatMessages(prev => prev.map(msg => 
             msg.id === streamingMessageId
-              ? { ...msg, isStreaming: false }
+              ? { 
+                  ...msg, 
+                  isStreaming: false,
+                  actions: result.actions || msg.actions
+                }
               : msg
           ));
           setIsAgentTyping(false);
 
-          // Process any accumulated actions
-          const finalMessage = chatMessages.find(msg => msg.id === streamingMessageId);
-          if (finalMessage?.actions && finalMessage.actions.length > 0) {
-            processAgentActions(finalMessage.actions);
-          }
-
           logger.info('✅ Chat streaming completed', {
             messageId: streamingMessageId,
-            hasActions: finalMessage?.actions?.length ?? 0
+            hasActions: result.actions?.length ?? 0
           });
+        },
+        onProgress: (progress: number) => {
+          logger.debug('📊 Chat streaming progress:', { progress });
+        },
+        onCanvasUpdate: (canvasData: CanvasData) => {
+          if (canvasData.nodes) setNodes(canvasData.nodes);
+          if (canvasData.edges) setEdges(canvasData.edges);
         }
       });
 
       // Cleanup on unmount
       return () => {
-        eventSource.close();
+        cleanup();
       };
       
     } catch (error) {
       logger.error('❌ Chat error:', error);
       
       // Fallback response
-      const fallbackMessage = {
+      const fallbackMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        type: 'agent' as const,
+        type: 'agent',
         content: "I'm having trouble connecting to my AI brain right now, but I'm still here to help! Could you tell me more about your architecture needs?",
         timestamp: new Date()
       };
@@ -486,7 +490,7 @@ function DesignCanvasPage() {
       setChatMessages(prev => [...prev, fallbackMessage]);
       setIsAgentTyping(false);
     }
-  }, [chatInput, isAgentTyping, agentContext, nodes, edges, chatMessages]);
+  }, [chatInput, isAgentTyping, agentContext, nodes, edges, activeWorkspace?.id]);
 
   const handleChatKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
