@@ -103,7 +103,7 @@ export class A2AStreamingService {
 
   async startStreamingExecution(task: any, options: StreamingOptions = {}) {
     try {
-      console.log('🔄 Starting streaming execution:', task);
+      logger.info('🔄 Starting streaming execution:', task);
       
       // Prepare the POST data
       const postData = {
@@ -114,10 +114,11 @@ export class A2AStreamingService {
         streamingEnabled: true
       };
 
-      // Create POST request with EventSource
+      // Create EventSource URL with data in query params
       const url = new URL(`${this.baseUrl}/agents/ask`);
       url.searchParams.append('data', JSON.stringify(postData));
       
+      // Create EventSource with the URL
       const eventSource = A2AStreamingService.setupEventSource(url.toString(), options);
 
       // Handle all possible event types
@@ -140,12 +141,12 @@ export class A2AStreamingService {
       eventTypes.forEach(eventType => {
         eventSource.addEventListener(eventType, (event) => {
           try {
-            console.log(`📡 Received ${eventType} event:`, event.data);
+            logger.debug(`📡 Received ${eventType} event:`, event.data);
             const data = JSON.parse(event.data);
             
             switch (eventType) {
               case 'error':
-                console.error('❌ Stream error:', data);
+                logger.error('❌ Stream error:', data);
                 if (options.onError) {
                   options.onError(data);
                 }
@@ -153,7 +154,7 @@ export class A2AStreamingService {
                 break;
               
               case 'complete':
-                console.log('✅ Stream completed:', data);
+                logger.info('✅ Stream completed:', data);
                 if (options.onComplete) {
                   options.onComplete(data.result);
                 }
@@ -165,19 +166,19 @@ export class A2AStreamingService {
                 this.processStreamChunk(data, options);
             }
           } catch (error) {
-            console.warn(`⚠️ Error processing ${eventType} event:`, error);
+            logger.warn(`⚠️ Error processing ${eventType} event:`, error);
           }
         });
       });
 
       // Clean up on unmount
       return () => {
-        console.log('🧹 Cleaning up streaming connection');
+        logger.info('🧹 Cleaning up streaming connection');
         eventSource.close();
       };
 
     } catch (error) {
-      console.error('❌ Streaming execution error:', error);
+      logger.error('❌ Streaming execution error:', error);
       if (options.onError) {
         options.onError(error);
       }

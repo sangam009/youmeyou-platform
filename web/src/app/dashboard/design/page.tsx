@@ -4,7 +4,7 @@ import React, { useState, useCallback, useContext, useRef, useEffect } from 'rea
 import { ReactFlow, Background, Controls, MiniMap, Node, Edge, Connection, addEdge, useNodesState, useEdgesState } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { WorkspaceContext } from '../layout';
-import { streamingService, StreamingData, StreamingResult, CanvasData } from '@/lib/canvasApi';
+import { streamingService, StreamingData, StreamingResult, CanvasData, askAgent } from '@/lib/canvasApi';
 import logger from '@/lib/logger';
 import { 
   PlusIcon, 
