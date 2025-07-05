@@ -332,7 +332,7 @@ Provide the follow-up prompt in this JSON format:
     logger.warn('🔄 Using fallback task division');
     return {
       taskAnalysis: {
-        complexity: 'medium',
+        complexity: 0.5,
         estimatedDuration: '1-2 hours',
         requiredSkills: ['general'],
         riskLevel: 'medium'
@@ -345,11 +345,11 @@ Provide the follow-up prompt in this JSON format:
         priority: 'high',
         dependencies: [],
         estimatedTime: '1 hour',
-        deliverables: ['task completion'],
-        acceptanceCriteria: ['task completed']
+        deliverables: ['Task completion report'],
+        acceptanceCriteria: ['Task requirements met']
       }],
       executionOrder: ['task-1'],
-      successMetrics: ['task completed'],
+      successMetrics: ['Task completed successfully'],
       source: 'fallback'
     };
   }

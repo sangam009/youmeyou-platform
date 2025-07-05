@@ -106,6 +106,25 @@ export class ProjectManagerAgent extends ConversationalAgent {
 
     const taskDivision = await this.taskAnalyzer.divideTaskIntoSubtasks(userQuery, context);
     
+    // Validate task division result
+    if (!taskDivision || !Array.isArray(taskDivision.subTasks)) {
+      logger.warn('⚠️ Invalid task division result, using fallback');
+      return {
+        agentId: 'project-manager',
+        agentName: this.agentName,
+        response: {
+          content: `I've analyzed your request: "${userQuery}"\n\nI'll help you with this task.`,
+          analysis: 'Simple task execution',
+          suggestions: []
+        },
+        executedAt: new Date(),
+        metadata: {
+          complexity: 0.5,
+          executionType: 'simple'
+        }
+      };
+    }
+
     this.streamProgress({
       type: 'task_division_complete',
       agent: this.agentName,
@@ -122,12 +141,18 @@ export class ProjectManagerAgent extends ConversationalAgent {
     for (let i = 0; i < taskDivision.subTasks.length; i++) {
       const subTask = taskDivision.subTasks[i];
       
+      // Validate sub-task structure
+      if (!subTask || typeof subTask !== 'object') {
+        logger.warn(`⚠️ Invalid sub-task at index ${i}, skipping`);
+        continue;
+      }
+
       this.streamProgress({
         type: 'subtask_start',
         agent: this.agentName,
-        status: `Executing sub-task ${i + 1}/${taskDivision.subTasks.length}: ${subTask.title}`,
+        status: `Executing sub-task ${i + 1}/${taskDivision.subTasks.length}: ${subTask.title || 'Untitled Task'}`,
         completionScore: 20 + (i * 15),
-        currentTask: subTask.title,
+        currentTask: subTask.title || 'Untitled Task',
         timestamp: new Date().toISOString()
       }, context);
 
@@ -135,19 +160,20 @@ export class ProjectManagerAgent extends ConversationalAgent {
       const { LLMAgent } = await import('./LLMAgent.js');
       const llmAgent = LLMAgent.getInstance();
       
+      // Safely construct sub-task prompt
       const subTaskPrompt = `
-As a ${subTask.agent}, execute this specific task:
+As a ${subTask.agent || 'project manager'}, execute this specific task:
 
-TASK: ${subTask.title}
-DESCRIPTION: ${subTask.description}
-DELIVERABLES: ${subTask.deliverables.join(', ')}
-ACCEPTANCE CRITERIA: ${subTask.acceptanceCriteria.join(', ')}
+TASK: ${subTask.title || 'Execute task'}
+DESCRIPTION: ${subTask.description || userQuery}
+${subTask.deliverables ? `DELIVERABLES: ${Array.isArray(subTask.deliverables) ? subTask.deliverables.join(', ') : subTask.deliverables}` : ''}
+${subTask.acceptanceCriteria ? `ACCEPTANCE CRITERIA: ${Array.isArray(subTask.acceptanceCriteria) ? subTask.acceptanceCriteria.join(', ') : subTask.acceptanceCriteria}` : ''}
 
 Please provide a comprehensive response that addresses all requirements.
 `;
 
       const llmResponse = await llmAgent.collaborateWithAgent(
-        subTask.agent,
+        subTask.agent || this.agentName,
         subTaskPrompt,
         { ...streamingContext, subTask }
       );
@@ -155,10 +181,10 @@ Please provide a comprehensive response that addresses all requirements.
       // Store conversation turn in VectorDB
       await vectorDB.storeConversationTurn(userId, projectId, {
         turnNumber: i + 1,
-        userMessage: subTask.description,
+        userMessage: subTask.description || userQuery,
         agentResponse: llmResponse.response,
-        agentName: subTask.agent,
-        completionScore: 0.5, // Will be updated after evaluation
+        agentName: subTask.agent || this.agentName,
+        completionScore: 0.5,
         context: { subTask, conversationContext },
         timestamp: new Date().toISOString()
       });
@@ -171,7 +197,7 @@ Please provide a comprehensive response that addresses all requirements.
         try {
           const result = await actionExecutor.executeAction(userId, projectId, {
             ...action,
-            agentName: subTask.agent
+            agentName: subTask.agent || this.agentName
           }, { ...context, subTask });
           actionResults.push(result);
         } catch (error) {
@@ -183,68 +209,23 @@ Please provide a comprehensive response that addresses all requirements.
       // LLM-POWERED progress evaluation
       const progressEvaluation = await this.taskAnalyzer.evaluateTaskProgress(
         llmResponse.response,
-        subTask.description,
+        subTask.description || userQuery,
         { ...context, subTask, actionResults }
       );
 
       // LLM-POWERED missing elements detection
       const missingElements = await this.taskAnalyzer.detectMissingElements(
         llmResponse.response,
-        subTask.description,
+        subTask.description || userQuery,
         { ...context, subTask }
       );
 
-      // If not complete, generate follow-up prompts
-      let finalResponse = llmResponse.response;
-      let conversationTurns = 1;
-
-      while (progressEvaluation.completionScore < this.taskAnalyzer.completionThreshold && 
-             conversationTurns < 3) {
-        
-        conversationTurns++;
-        
-        this.streamProgress({
-          type: 'follow_up',
-          agent: this.agentName,
-          status: `Follow-up ${conversationTurns} for: ${subTask.title}`,
-          completionScore: 20 + (i * 15) + (conversationTurns * 5),
-          currentTask: subTask.title,
-          timestamp: new Date().toISOString()
-        }, context);
-
-        // Generate follow-up prompt using LLM
-        const followUp = await this.taskAnalyzer.generateFollowUpPrompt(
-          missingElements.missingElements,
-          subTask.description,
-          { ...context, subTask, previousResponse: finalResponse }
-        );
-
-        const followUpResponse = await llmAgent.collaborateWithAgent(
-          subTask.agent,
-          followUp.followUpPrompt,
-          { ...streamingContext, subTask, previousResponse: finalResponse }
-        );
-
-        finalResponse += '\n\n' + followUpResponse.response;
-
-        // Re-evaluate progress
-        const newProgressEvaluation = await this.taskAnalyzer.evaluateTaskProgress(
-          finalResponse,
-          subTask.description,
-          { ...context, subTask }
-        );
-
-        if (newProgressEvaluation.completionScore >= this.taskAnalyzer.completionThreshold) {
-          break;
-        }
-      }
-
       results.push({
         subTask,
-        response: finalResponse,
+        response: llmResponse.response,
         completionScore: progressEvaluation.completionScore,
         missingElements: missingElements.missingElements,
-        conversationTurns
+        conversationTurns: 1
       });
 
       overallCompletion += progressEvaluation.completionScore / taskDivision.subTasks.length;
@@ -254,7 +235,7 @@ Please provide a comprehensive response that addresses all requirements.
         agent: this.agentName,
         status: `Sub-task ${i + 1} completed (${Math.round(progressEvaluation.completionScore * 100)}%)`,
         completionScore: 20 + ((i + 1) * 15),
-        currentTask: subTask.title,
+        currentTask: subTask.title || 'Untitled Task',
         timestamp: new Date().toISOString()
       }, context);
     }
@@ -284,16 +265,16 @@ Please provide a comprehensive response that addresses all requirements.
       response: {
         content: finalResponse,
         analysis: `Task divided into ${taskDivision.subTasks.length} sub-tasks`,
-        suggestions: taskDivision.successMetrics,
+        suggestions: taskDivision.successMetrics || [],
         subTasks: results.map(r => ({
-          title: r.subTask.title,
+          title: r.subTask.title || 'Untitled Task',
           completion: Math.round(r.completionScore * 100),
-          missingElements: r.missingElements.length
+          missingElements: Array.isArray(r.missingElements) ? r.missingElements.length : 0
         }))
       },
       executedAt: new Date(),
       metadata: {
-        taskAnalysis: taskDivision.taskAnalysis,
+        taskAnalysis: taskDivision.taskAnalysis || {},
         subTaskCount: taskDivision.subTasks.length,
         overallCompletion: Math.round(overallCompletion * 100),
         llmDriven: true,

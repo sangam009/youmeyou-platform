@@ -45,60 +45,21 @@ class AgentController {
 
   async askAgent(req, res) {
     try {
-      // Get task data from either POST body or query parameters
-      let taskData;
-      if (req.body && Object.keys(req.body).length > 0) {
-        taskData = req.body;
-      } else if (req.query.data) {
-        try {
-          taskData = JSON.parse(req.query.data);
-        } catch (error) {
-          logger.error('❌ Failed to parse task data from query:', error);
-          return res.status(400).json({
-            status: 'error',
-            message: 'Invalid task data in query parameters'
-          });
-        }
-      }
-
-      if (!taskData) {
-        logger.error('❌ No task data found in request');
-        return res.status(400).json({
-          status: 'error',
-          message: 'No task data found in request'
-        });
-      }
-
       logger.info('🤖 askAgent endpoint called', {
-        taskData,
-        user: req.user?.userId,
-        headers: req.headers['content-type']
+        headers: req.get('content-type'),
+        user: req.userId,
+        taskData: req.body
       });
 
-      const { content, canvasState, agentId } = taskData;
-      const userId = req.user?.userId || 'dummy-user-id';
-      
+      const { content, type = 'AGENT_CHAT', canvasState = {}, streamingEnabled = true } = req.body;
+      const userId = req.userId;
+      let projectId = canvasState?.projectId;
+
       if (!content) {
-        logger.error('❌ Missing content in askAgent request');
-        return res.status(400).json({
-          status: 'error',
-          message: 'Content is required'
-        });
+        return res.status(400).json({ error: 'Content is required' });
       }
 
-      // Configure response for streaming
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no' // Disable nginx buffering
-      });
-
-      // Send initial heartbeat to establish connection
-      res.write('event: connected\ndata: {"status":"connected"}\n\n');
-      
-      // Get current canvas and project context
-      let projectId = canvasState?.projectId;
+      // Get project ID from canvas if not provided
       if (!projectId && canvasState?.canvasId) {
         try {
           const canvas = await canvasService.getCanvas(canvasState.canvasId);
@@ -109,24 +70,38 @@ class AgentController {
         }
       }
 
+      // Setup streaming response
+      if (streamingEnabled) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        });
+
+        // Send initial connection event
+        res.write(`event: connected\ndata: ${JSON.stringify({ status: 'connected' })}\n\n`);
+      }
+
       // Setup streaming context with buffered write
       const streamingContext = {
         userId,
         projectId: projectId || 'default-project',
         canvasState,
-        streamingEnabled: true,
+        streamingEnabled,
         streamingCallback: (data) => {
-          try {
-            const eventData = JSON.stringify(data);
-            logger.info('📡 Sending stream event:', {
-              type: data.type,
-              dataLength: eventData.length,
-              preview: eventData.substring(0, 100) + '...'
-            });
-            
-            res.write(`event: message\ndata: ${eventData}\n\n`);
-          } catch (error) {
-            logger.error('❌ Error writing stream chunk:', error);
+          if (!res.writableEnded) {
+            try {
+              const eventData = JSON.stringify(data);
+              logger.info('📡 Sending stream event:', {
+                type: data.type,
+                dataLength: eventData.length,
+                preview: eventData.substring(0, 100) + '...'
+              });
+              
+              res.write(`event: message\ndata: ${eventData}\n\n`);
+            } catch (error) {
+              logger.error('❌ Error writing stream chunk:', error);
+            }
           }
         }
       };
@@ -134,37 +109,45 @@ class AgentController {
       // Create task object
       const task = {
         content,
-        type: taskData.type || 'general',
+        type: type || 'general',
         canvasState,
-        streamingEnabled: true,
+        streamingEnabled,
         userId,
         timestamp: new Date()
       };
 
-      // Process the request
-      const result = await a2aService.routeTask({ body: task }, res);
+      try {
+        // Process the request
+        const result = await a2aService.routeTask({ body: task }, res);
 
-      // Send completion event
-      const completionData = JSON.stringify({ type: 'complete', result });
-      res.write(`event: complete\ndata: ${completionData}\n\n`);
-      res.end();
+        // Send completion event if stream hasn't ended
+        if (streamingEnabled && !res.writableEnded) {
+          const completionData = JSON.stringify({ type: 'complete', result });
+          res.write(`event: complete\ndata: ${completionData}\n\n`);
+          res.end();
+        } else if (!streamingEnabled) {
+          // Send regular JSON response for non-streaming requests
+          res.json({ success: true, result });
+        }
 
-      logger.info('✅ askAgent request completed successfully', { result });
-
-    } catch (error) {
-      logger.error('❌ Error in askAgent:', error);
-      const errorData = JSON.stringify({ type: 'error', error: error.message });
-      
-      if (!res.headersSent) {
-        res.writeHead(500, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive'
-        });
+        logger.info('✅ askAgent request completed successfully', { result });
+      } catch (error) {
+        // Handle errors without writing to ended stream
+        logger.error('❌ Error in askAgent:', error);
+        
+        if (streamingEnabled && !res.writableEnded) {
+          const errorData = JSON.stringify({ type: 'error', error: error.message });
+          res.write(`event: error\ndata: ${errorData}\n\n`);
+          res.end();
+        } else if (!streamingEnabled && !res.headersSent) {
+          res.status(500).json({ error: error.message });
+        }
       }
-      
-      res.write(`event: error\ndata: ${errorData}\n\n`);
-      res.end();
+    } catch (error) {
+      logger.error('❌ Fatal error in askAgent:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal server error' });
+      }
     }
   }
 
