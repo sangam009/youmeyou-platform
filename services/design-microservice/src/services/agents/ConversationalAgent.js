@@ -580,9 +580,10 @@ ${lastTurn.response}
   /**
    * Get fallback response when conversation fails
    */
-  getFallbackResponse(userQuery, error) {
+  getFallbackResponse(userQuery = '', error) {
+    const queryPreview = typeof userQuery === 'string' ? userQuery.substring(0, 50) : '';
     return {
-      content: `As your ${this.specialization}, I encountered an issue during our conversation but I'm here to help! For "${userQuery.substring(0, 50)}...", I recommend breaking this down into manageable components and addressing each systematically.`,
+      content: `As your ${this.specialization}, I encountered an issue during our conversation but I'm here to help! ${queryPreview ? `For "${queryPreview}...", ` : ''}I recommend breaking this down into manageable components and addressing each systematically.`,
       analysis: `Fallback response due to conversation error: ${error.message}`,
       suggestions: [
         'Try rephrasing the request with more specific details',

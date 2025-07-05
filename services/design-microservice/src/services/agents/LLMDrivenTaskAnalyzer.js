@@ -14,38 +14,34 @@ export class LLMDrivenTaskAnalyzer {
   }
 
   /**
-   * LLM-POWERED task division - breaks down complex requests into sub-tasks
+   * LLM-POWERED task division into subtasks
    */
   async divideTaskIntoSubtasks(userPrompt, context = {}) {
     try {
       logger.info('🤖 Using LLM for intelligent task division');
       
       const taskDivisionPrompt = `
-As an expert project manager and system architect, analyze this request and break it down into logical sub-tasks:
+As an expert project manager, divide this task into manageable sub-tasks:
 
-REQUEST: "${userPrompt}"
+TASK: "${userPrompt}"
 
 CONTEXT: ${JSON.stringify(context, null, 2)}
 
-Please provide a detailed breakdown in this JSON format:
+Please divide the task into sub-tasks in this JSON format:
 {
   "taskAnalysis": {
-    "complexity": "low|medium|high",
-    "estimatedDuration": "time estimate",
-    "requiredSkills": ["skill1", "skill2"],
-    "riskLevel": "low|medium|high"
+    "complexity": 0.7,
+    "estimatedEffort": "4 hours",
+    "requiredSkills": ["skill1", "skill2"]
   },
   "subTasks": [
     {
       "id": "task-1",
-      "title": "Clear task title",
-      "description": "Detailed description",
-      "agent": "best-suited-agent",
-      "priority": "high|medium|low",
-      "dependencies": ["task-id"],
-      "estimatedTime": "time estimate",
-      "deliverables": ["expected output"],
-      "acceptanceCriteria": ["criteria1", "criteria2"]
+      "title": "specific sub-task",
+      "description": "detailed description",
+      "estimatedEffort": "1 hour",
+      "dependencies": [],
+      "assignedTo": "agent type"
     }
   ],
   "executionOrder": ["task-1", "task-2"],
@@ -57,13 +53,12 @@ Available agents: projectManager, techLead, architectureDesigner, databaseDesign
 Focus on creating actionable, specific tasks that can be executed independently.
 `;
 
-      const response = await this.llmAgent.collaborateWithAgent(
-        'taskAnalyzer',
-        taskDivisionPrompt,
-        { analysisType: 'task_division', context }
-      );
+      const response = await this.llmAgent.execute(taskDivisionPrompt, {
+        type: 'task_division',
+        context
+      });
 
-      return this.parseTaskDivisionResponse(response.response);
+      return this.parseTaskDivisionResponse(response.content);
       
     } catch (error) {
       logger.error('❌ LLM task division failed:', error);
@@ -117,13 +112,12 @@ Please evaluate the completion percentage and provide detailed analysis in this 
 Be thorough and specific. A task is considered complete at 80% or higher.
 `;
 
-      const response = await this.llmAgent.collaborateWithAgent(
-        'progressEvaluator',
-        progressEvaluationPrompt,
-        { analysisType: 'progress_evaluation', context }
-      );
+      const response = await this.llmAgent.execute(progressEvaluationPrompt, {
+        type: 'progress_evaluation',
+        context
+      });
 
-      return this.parseProgressEvaluationResponse(response.response);
+      return this.parseProgressEvaluationResponse(response.content);
       
     } catch (error) {
       logger.error('❌ LLM progress evaluation failed:', error);
@@ -167,13 +161,12 @@ Please identify missing elements in this JSON format:
 Focus on identifying gaps that would prevent the solution from being complete or functional.
 `;
 
-      const response = await this.llmAgent.collaborateWithAgent(
-        'gapAnalyzer',
-        missingElementsPrompt,
-        { analysisType: 'missing_elements', context }
-      );
+      const response = await this.llmAgent.execute(missingElementsPrompt, {
+        type: 'missing_elements',
+        context
+      });
 
-      return this.parseMissingElementsResponse(response.response);
+      return this.parseMissingElementsResponse(response.content);
       
     } catch (error) {
       logger.error('❌ LLM missing elements detection failed:', error);
@@ -212,13 +205,12 @@ Provide the follow-up prompt in this JSON format:
 }
 `;
 
-      const response = await this.llmAgent.collaborateWithAgent(
-        'promptGenerator',
-        followUpPrompt,
-        { analysisType: 'follow_up_generation', context }
-      );
+      const response = await this.llmAgent.execute(followUpPrompt, {
+        type: 'follow_up_generation',
+        context
+      });
 
-      return this.parseFollowUpPromptResponse(response.response);
+      return this.parseFollowUpPromptResponse(response.content);
       
     } catch (error) {
       logger.error('❌ LLM follow-up prompt generation failed:', error);

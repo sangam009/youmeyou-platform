@@ -227,4 +227,24 @@ export class LLMAgent {
       throw error;
     }
   }
+
+  /**
+   * Collaborate with another agent
+   */
+  async collaborateWithAgent(agent, task, context = {}) {
+    if (!this.model) {
+      logger.warn('⚠️ LLM not initialized, returning mock response');
+      return {
+        content: 'I understand you want help with architecture. Could you tell me more about what you\'re trying to build?',
+        metadata: {
+          model: 'mock',
+          requestId: 'mock-request',
+          responseTime: 0
+        }
+      };
+    }
+
+    const prompt = `Task: ${task}\nContext: ${JSON.stringify(context)}`;
+    return this.execute(prompt, { agent });
+  }
 } 

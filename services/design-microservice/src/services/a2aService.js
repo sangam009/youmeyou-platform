@@ -33,7 +33,8 @@ export class A2AService {
     try {
       // Handle both request objects and direct task objects
       const task = reqOrTask.body || reqOrTask;
-      const { content, type = 'general', canvasState, streamingEnabled, userId } = task;
+      const { content, type = 'general', canvasState, userId } = task;
+      const streamingEnabled = task.streamingEnabled || false;
 
       if (!content) {
         throw new Error('Content is required for task routing');
