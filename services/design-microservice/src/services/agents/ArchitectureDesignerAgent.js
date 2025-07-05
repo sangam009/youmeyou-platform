@@ -1,5 +1,6 @@
 import { config } from '../../config/index.js';
 import logger from '../../utils/logger.js';
+import { LLMAgent } from '../../agents/LLMAgent.js';
 
 /**
  * Architecture Designer Agent
@@ -16,54 +17,71 @@ export class ArchitectureDesignerAgent {
     ];
     
     logger.info('🏗️ ArchitectureDesignerAgent initialized');
+    this.llmAgent = LLMAgent.getInstance();
   }
 
   /**
    * Execute architecture design task
    */
-  async execute(userQuery, context = {}) {
+  async execute(prompt, context = {}) {
+    return this.handleTask(prompt, context);
+  }
+
+  /**
+   * Handle architecture design task with streaming support
+   */
+  async handleTask(prompt, context = {}) {
+    const { streamingEnabled, streamingCallback } = context;
+
     try {
-      logger.info(`🏗️ ${this.name} executing task: ${userQuery.substring(0, 100)}...`);
+      if (streamingEnabled && streamingCallback) {
+        // Send initial status
+        streamingCallback({
+          type: 'agent_start',
+          agent: 'Architecture Designer',
+          status: 'Starting architecture analysis...',
+          completionScore: 0
+        });
+      }
 
-      // Analyze the requirements
-      const requirements = this.parseRequirements(userQuery);
-      
-      // Design the architecture
-      const architecture = await this.designArchitecture(requirements, context);
-      
-      // Generate additional artifacts
-      const scalabilityAnalysis = this.analyzeScalability(architecture);
-      const recommendations = this.generateRecommendations(architecture, requirements);
+      // Execute architecture design task
+      const result = await this.llmAgent.execute(prompt, {
+        ...context,
+        specialization: 'architecture',
+        taskType: 'design'
+      });
 
-      const result = {
-        content: this.formatResponse(architecture, scalabilityAnalysis, recommendations),
-        artifacts: [
-          {
-            id: 'architecture-design',
-            name: 'architecture_design.json',
-            content: architecture,
-            type: 'architecture'
-          },
-          {
-            id: 'scalability-analysis',
-            name: 'scalability_analysis.json',
-            content: scalabilityAnalysis,
-            type: 'analysis'
-          }
-        ],
-        canvas: this.generateCanvasData(architecture),
+      if (streamingEnabled && streamingCallback) {
+        // Send completion status
+        streamingCallback({
+          type: 'agent_complete',
+          agent: 'Architecture Designer',
+          status: 'Architecture analysis complete',
+          completionScore: 100,
+          result
+        });
+      }
+
+      return {
+        type: 'architecture_design',
+        content: result.content,
         metadata: {
-          agent: this.name,
-          capabilities: this.capabilities,
-          timestamp: new Date().toISOString()
+          ...result.metadata,
+          agent: 'Architecture Designer'
         }
       };
 
-      logger.info(`✅ ${this.name} completed successfully`);
-      return result;
-
     } catch (error) {
-      logger.error(`❌ ${this.name} failed:`, error);
+      logger.error('❌ Architecture Designer task failed:', error);
+      
+      if (streamingEnabled && streamingCallback) {
+        streamingCallback({
+          type: 'error',
+          agent: 'Architecture Designer',
+          error: error.message
+        });
+      }
+      
       throw error;
     }
   }

@@ -8,28 +8,192 @@ import APIDesignerAgent from './APIDesignerAgent.js';
 import CodeGeneratorAgent from './CodeGeneratorAgent.js';
 import TechLeadAgent from './TechLeadAgent.js';
 import ProjectManagerAgent from './ProjectManagerAgent.js';
+import LLMAgent from './LLMAgent.js';
+import LLMDrivenTaskAnalyzer from './LLMDrivenTaskAnalyzer.js';
 
 /**
- * Agent Orchestrator - Coordinates multiple agents for complex tasks
- * No longer needs A2A client as it's part of the A2A server
+ * Orchestrates multi-agent collaboration with optimized LLM usage
  */
 export class AgentOrchestrator {
+  static instance = null;
+  static ANALYSIS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  static analysisCache = new Map();
+
   constructor() {
-    // Initialize agents only once
-    if (!AgentOrchestrator.instance) {
-      this.projectManager = new ProjectManagerAgent();
-      this.architectureDesigner = new ArchitectureDesignerAgent();
-      
-      // Note: Other agents not initialized yet to avoid complexity
-      // They can be added later when needed
-      
-      // Store the instance
-      AgentOrchestrator.instance = this;
-      
-      logger.info('🎯 [ORCHESTRATOR] AgentOrchestrator initialized with core agents (ProjectManager, ArchitectureDesigner)');
+    if (AgentOrchestrator.instance) {
+      return AgentOrchestrator.instance;
     }
+
+    this.llmAgent = LLMAgent.getInstance();
+    this.taskAnalyzer = new LLMDrivenTaskAnalyzer();
+    this.projectManager = new ProjectManagerAgent();
+    this.architectureDesigner = new ArchitectureDesignerAgent();
     
+    // Initialize core agents only
+    this.agents = {
+      projectManager: this.projectManager,
+      architectureDesigner: this.architectureDesigner
+    };
+
+    AgentOrchestrator.instance = this;
+  }
+
+  static getInstance() {
+    if (!AgentOrchestrator.instance) {
+      AgentOrchestrator.instance = new AgentOrchestrator();
+    }
     return AgentOrchestrator.instance;
+  }
+
+  /**
+   * Get cached analysis
+   */
+  static getCachedAnalysis(prompt) {
+    const cached = this.analysisCache.get(prompt);
+    if (cached && Date.now() - cached.timestamp < this.ANALYSIS_CACHE_TTL) {
+      logger.info('📦 Using cached task analysis:', {
+        promptPreview: prompt.substring(0, 100),
+        cacheAge: Math.round((Date.now() - cached.timestamp) / 1000) + 's'
+      });
+      return cached.analysis;
+    }
+    return null;
+  }
+
+  /**
+   * Cache task analysis
+   */
+  static cacheAnalysis(prompt, analysis) {
+    this.analysisCache.set(prompt, {
+      analysis,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Execute task with optimized agent collaboration
+   */
+  async executeTask(prompt, context = {}) {
+    try {
+      // Check analysis cache first
+      let analysis = AgentOrchestrator.getCachedAnalysis(prompt);
+      
+      if (!analysis) {
+        analysis = await this.taskAnalyzer.analyzeTask(prompt);
+        AgentOrchestrator.cacheAnalysis(prompt, analysis);
+      }
+
+      const { complexity, taskType } = analysis;
+      
+      logger.info('🎯 Task analysis complete:', {
+        complexity,
+        taskType,
+        hasContext: !!context
+      });
+
+      // For simple tasks, use single agent with batched LLM calls
+      if (complexity < 0.5) {
+        return this.executeSimpleTask(prompt, analysis, context);
+      }
+
+      // For complex tasks, use coordinated execution with shared context
+      return this.executeCoordinatedTask(prompt, analysis, context);
+    } catch (error) {
+      logger.error('❌ Task execution failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute simple task with single agent
+   */
+  async executeSimpleTask(prompt, analysis, context) {
+    const agent = this.selectAgentForTask(analysis);
+    
+    if (!agent) {
+      throw new Error('No suitable agent found for task');
+    }
+
+    logger.info('🤖 Executing simple task with agent:', {
+      agentType: agent.constructor.name,
+      complexity: analysis.complexity
+    });
+
+    return agent.execute(prompt, context);
+  }
+
+  /**
+   * Execute complex task with coordinated agents
+   */
+  async executeCoordinatedTask(prompt, analysis, context) {
+    const agents = this.selectAgentsForTask(analysis);
+    
+    if (!agents.length) {
+      throw new Error('No suitable agents found for task');
+    }
+
+    logger.info('🤖 Executing complex task with agents:', {
+      agentCount: agents.length,
+      agentTypes: agents.map(a => a.constructor.name),
+      complexity: analysis.complexity
+    });
+
+    // Create shared context for all agents
+    const sharedContext = {
+      ...context,
+      taskAnalysis: analysis,
+      collaboratingAgents: agents.map(a => a.constructor.name)
+    };
+
+    // Execute in parallel with shared context
+    const results = await Promise.all(
+      agents.map(agent => agent.execute(prompt, sharedContext))
+    );
+
+    // Combine results
+    return this.combineResults(results, analysis);
+  }
+
+  /**
+   * Select single agent for task
+   */
+  selectAgentForTask(analysis) {
+    const { taskType, requiredSkills = [] } = analysis;
+
+    if (requiredSkills.includes('architecture')) {
+      return this.architectureDesigner;
+    }
+
+    return this.projectManager; // Default to project manager
+  }
+
+  /**
+   * Select multiple agents for task
+   */
+  selectAgentsForTask(analysis) {
+    const { taskType, requiredSkills = [] } = analysis;
+    const selectedAgents = [];
+
+    // Always include project manager for coordination
+    selectedAgents.push(this.projectManager);
+
+    if (requiredSkills.includes('architecture')) {
+      selectedAgents.push(this.architectureDesigner);
+    }
+
+    return selectedAgents;
+  }
+
+  /**
+   * Combine results from multiple agents
+   */
+  combineResults(results, analysis) {
+    return {
+      type: 'multi_agent_response',
+      results,
+      analysis,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**
@@ -190,89 +354,6 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Execute a coordinated task with multiple agents
-   */
-  async executeCoordinatedTask(selectedAgents, userQuery, context) {
-    const results = [];
-    
-    try {
-      logger.info(`🚀 [ORCHESTRATOR] Executing coordinated task with ${selectedAgents.length} agents`);
-      logger.info(`📋 [ORCHESTRATOR] Context passed to agents:`, {
-        hasUserId: !!context.userId,
-        hasProjectId: !!context.projectId,
-        userId: context.userId,
-        projectId: context.projectId
-      });
-
-      for (const agentName of selectedAgents) {
-        const agent = this[agentName];
-        
-        if (!agent) {
-          logger.warn(`⚠️ [ORCHESTRATOR] Agent ${agentName} not found or not initialized, skipping`);
-          results.push({
-            agent: agentName,
-            error: 'Agent not available',
-            status: 'skipped',
-            timestamp: new Date().toISOString()
-          });
-          continue;
-        }
-
-        try {
-          logger.info(`🤖 [ORCHESTRATOR] Executing ${agentName} with context:`, {
-            userId: context.userId,
-            projectId: context.projectId,
-            hasStreaming: !!context.streamingEnabled
-          });
-          
-          const result = await agent.execute(userQuery, context);
-          results.push({
-            agent: agentName,
-            result: result,
-            status: 'completed',
-            timestamp: new Date().toISOString()
-          });
-          
-          logger.info(`✅ [ORCHESTRATOR] ${agentName} completed successfully`);
-        } catch (agentError) {
-          logger.error(`❌ [ORCHESTRATOR] ${agentName} failed:`, agentError);
-          results.push({
-            agent: agentName,
-            error: agentError.message,
-            status: 'failed',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
-
-      // Check if any agents actually executed successfully
-      const successfulResults = results.filter(r => r.status === 'completed');
-      const success = successfulResults.length > 0;
-
-      logger.info(`📊 [ORCHESTRATOR] Task execution summary: ${successfulResults.length}/${results.length} agents succeeded`);
-
-      return {
-        success: success,
-        results: results,
-        summary: this.generateSummary(results),
-        metadata: {
-          taskType: context.type,
-          agentsUsed: selectedAgents,
-          agentsSucceeded: successfulResults.length,
-          agentsFailed: results.filter(r => r.status === 'failed').length,
-          agentsSkipped: results.filter(r => r.status === 'skipped').length,
-          complexity: context.complexity,
-          timestamp: new Date().toISOString()
-        }
-      };
-
-    } catch (error) {
-      logger.error('❌ [ORCHESTRATOR] Error in coordinated task execution:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Generate a summary of all agent results
    */
   generateSummary(results) {
@@ -295,55 +376,5 @@ export class AgentOrchestrator {
     }
 
     return summary;
-  }
-
-  /**
-   * Execute task with appropriate agent(s)
-   */
-  async executeTask(content, context) {
-    const startTime = Date.now();
-    
-    try {
-      // For simple tasks, use project manager
-      if (context.complexity < 0.5) {
-        logger.info('🎯 Executing simple task with ProjectManager');
-        const result = await this.projectManager.handleTask(content, context);
-        
-        logger.info('⏱️ Simple task execution completed', {
-          timeSpentMs: Date.now() - startTime,
-          complexity: context.complexity
-        });
-        
-        return result;
-      }
-      
-      // For complex tasks, coordinate multiple agents
-      logger.info('🎯 Executing complex task with multiple agents');
-      
-      // Execute agents in parallel where possible
-      const [projectManagerResult, architectureResult] = await Promise.all([
-        this.projectManager.handleTask(content, context),
-        this.architectureDesigner.handleTask(content, context)
-      ]);
-      
-      // Combine results
-      const result = {
-        ...projectManagerResult,
-        architecture: architectureResult
-      };
-      
-      logger.info('⏱️ Complex task execution completed', {
-        timeSpentMs: Date.now() - startTime,
-        complexity: context.complexity
-      });
-      
-      return result;
-    } catch (error) {
-      logger.error('❌ Error in task execution:', {
-        error: error.message,
-        timeSpentMs: Date.now() - startTime
-      });
-      throw error;
-    }
   }
 }

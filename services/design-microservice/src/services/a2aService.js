@@ -3,7 +3,10 @@ import logger from '../utils/logger.js';
 import { AgentOrchestrator } from './agents/AgentOrchestrator.js';
 import { IntelligentTaskRouter } from './IntelligentTaskRouter.js';
 
-class A2AService {
+/**
+ * A2A Service with enhanced streaming support
+ */
+export class A2AService {
   constructor() {
     // Initialize intelligent router and orchestrator - use singletons
     this.intelligentRouter = new IntelligentTaskRouter();
@@ -17,93 +20,74 @@ class A2AService {
   }
 
   /**
-   * Route and execute task with intelligent agent selection
+   * Format SSE message
    */
-  async routeTask(content, context) {
-    const startTime = Date.now();
-    logger.info('📤 Starting task processing', {
-      taskType: 'chat',
-      hasCanvasState: !!context.canvasState,
-      streamingEnabled: context.streamingEnabled,
-      timestamp: new Date(startTime).toISOString(),
-      content
-    });
-
-    try {
-      // Stream initial status
-      this.streamUpdate(context, {
-        type: 'status',
-        message: 'Analyzing task...',
-        progress: 0
-      });
-
-      // Route task through intelligent router
-      const routingStartTime = Date.now();
-      const routingResult = await this.intelligentRouter.routeTask(content, context);
-      const routingTime = Date.now() - routingStartTime;
-      
-      logger.info('⏱️ Task routing completed', {
-        timeSpentMs: routingTime,
-        complexity: routingResult.complexity,
-        intent: routingResult.intent
-      });
-      
-      // Stream routing result
-      this.streamUpdate(context, {
-        type: 'routing',
-        complexity: routingResult.complexity,
-        intent: routingResult.intent,
-        progress: 20,
-        timeSpentMs: routingTime
-      });
-
-      // Execute task with selected agent(s)
-      const executionStartTime = Date.now();
-      const result = await this.orchestrator.executeTask(content, {
-        ...context,
-        complexity: routingResult.complexity,
-        taskType: 'chat'
-      });
-      const executionTime = Date.now() - executionStartTime;
-
-      logger.info('⏱️ Task execution completed', {
-        timeSpentMs: executionTime,
-        totalTimeMs: Date.now() - startTime,
-        result
-      });
-
-      // Stream completion
-      this.streamUpdate(context, {
-        type: 'complete',
-        result,
-        progress: 100,
-        timeSpentMs: {
-          routing: routingTime,
-          execution: executionTime,
-          total: Date.now() - startTime
-        }
-      });
-
-      return result;
-    } catch (error) {
-      logger.error('❌ Error during task processing:', error);
-      throw error;
-    }
+  formatSSEMessage(event, data) {
+    return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   }
 
   /**
-   * Helper to send streaming updates
+   * Route task with streaming support
    */
-  streamUpdate(context, data) {
-    if (context.streamingEnabled && context.streamingCallback) {
-      try {
-        logger.info('📡 Sending stream update:', data);
-        context.streamingCallback({
-          ...data,
-          timestamp: new Date().toISOString()
+  async routeTask(req, res) {
+    const { content, type = 'general', canvasState, streamingEnabled } = req.body;
+
+    // Set up SSE headers
+    if (streamingEnabled) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+
+      // Send initial connection event
+      res.write(this.formatSSEMessage('connected', { status: 'connected' }));
+    }
+
+    try {
+      const context = {
+        userId: req.user?.id,
+        projectId: canvasState?.projectId,
+        streamingEnabled,
+        streamingCallback: (data) => {
+          if (streamingEnabled) {
+            res.write(this.formatSSEMessage(data.type, data));
+          }
+        }
+      };
+
+      // Execute task with streaming
+      const result = await this.intelligentRouter.routeTask(content, {
+        ...context,
+        type,
+        complexity: 0.5 // Will be updated by analysis
+      });
+
+      // Send completion event
+      if (streamingEnabled) {
+        res.write(this.formatSSEMessage('complete', { 
+          type: 'complete',
+          status: 'Task execution completed',
+          result 
+        }));
+        res.end();
+      } else {
+        res.json(result);
+      }
+
+    } catch (error) {
+      logger.error('❌ Task execution failed:', error);
+      
+      if (streamingEnabled) {
+        res.write(this.formatSSEMessage('error', {
+          type: 'error',
+          error: error.message
+        }));
+        res.end();
+      } else {
+        res.status(500).json({
+          error: error.message
         });
-      } catch (error) {
-        logger.warn('⚠️ Error sending stream update:', error);
       }
     }
   }
