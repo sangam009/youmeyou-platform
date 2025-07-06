@@ -177,7 +177,7 @@ export class IntentClassificationService {
       type: 'casual',
       strategy: 'conversational',
       conversationStyle: 'friendly',
-      suggestedAgents: ['projectManager'], // PM can handle general questions nicely
+      suggestedAgents: ['casualConversation'], // Use dedicated casual conversation agent
       responseStyle: 'casual_helpful'
     };
 
@@ -230,8 +230,6 @@ export class IntentClassificationService {
       };
     }
   }
-
-
 
   /**
    * Select optimal model for response generation
@@ -295,7 +293,7 @@ export class IntentClassificationService {
       'code_development': ['codeGenerator', 'techLead'],
       'project_management': ['projectManager'],
       'data_analysis': ['databaseDesigner', 'architectureDesigner'],
-      'casual_conversation': ['projectManager']
+      'casual_conversation': ['casualConversation']  // Use dedicated casual conversation agent
     };
 
     return agentMapping[primaryIntent.intent] || ['projectManager'];

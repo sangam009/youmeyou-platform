@@ -4,6 +4,7 @@ import { LLMAgent } from '../LLMAgent.js';
 import { LLMDrivenTaskAnalyzer } from './LLMDrivenTaskAnalyzer.js';
 import { ProjectManagerAgent } from './ProjectManagerAgent.js';
 import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
+import { CasualConversationAgent } from './CasualConversationAgent.js';
 
 // Import individual agents - fix imports to match actual exports
 import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
@@ -28,11 +29,13 @@ export class AgentOrchestrator {
     this.taskAnalyzer = new LLMDrivenTaskAnalyzer();
     this.projectManager = new ProjectManagerAgent();
     this.architectureDesigner = new ArchitectureDesignerAgent();
+    this.casualConversation = new CasualConversationAgent();
     
     // Initialize core agents only
     this.agents = {
       projectManager: this.projectManager,
-      architectureDesigner: this.architectureDesigner
+      architectureDesigner: this.architectureDesigner,
+      casualConversation: this.casualConversation
     };
 
     AgentOrchestrator.instance = this;
@@ -175,7 +178,12 @@ export class AgentOrchestrator {
    * Select single agent for task
    */
   selectAgentForTask(analysis) {
-    const { taskType, requiredSkills = [] } = analysis;
+    const { taskType, primaryIntent, requiredSkills = [] } = analysis;
+
+    // For casual conversations, use the dedicated agent
+    if (primaryIntent === 'casual_conversation') {
+      return this.casualConversation;
+    }
 
     if (requiredSkills.includes('architecture')) {
       return this.architectureDesigner;

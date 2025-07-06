@@ -816,4 +816,36 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
       output: `Step ${index + 1} completed successfully`
     }));
   }
+
+  /**
+   * Classify intent of user query
+   */
+  async classifyIntent(prompt) {
+    try {
+      // Quick check for casual greetings
+      const casualGreetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+      if (casualGreetings.some(greeting => prompt.toLowerCase().trim() === greeting)) {
+        return {
+          confidence: 0.95,
+          isTechnical: false,
+          primaryIntent: 'casual_conversation',
+          routingDecision: 'conversational',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // For other messages, use DistilBERT for classification
+      const { DistilBERTComplexityAnalyzer } = await import('./cpuModels/DistilBERTComplexityAnalyzer.js');
+      const analyzer = new DistilBERTComplexityAnalyzer();
+      const analysis = await analyzer.analyzeText(prompt);
+
+      return {
+        ...analysis,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      logger.error('❌ Error in intent classification:', error);
+      throw error;
+    }
+  }
 } 
