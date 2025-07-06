@@ -6,8 +6,12 @@ import { apiMonitor } from '../../utils/apiMonitor.js';
 const GEMINI_MODEL = 'gemini-1.5-flash';
 const RATE_LIMIT = {
   maxCallsPerMinute: 60,
+  requestsPerMinute: 60,
   totalCalls: 0,
-  lastReset: Date.now()
+  callsThisMinute: 0,
+  lastReset: Date.now(),
+  resetTime: Date.now() + 60000,
+  requestQueue: []
 };
 
 // Gemini model configuration - Updated to use available models
@@ -491,7 +495,8 @@ export class LLMAgent {
       } else if (error.message.includes('404') || error.message.includes('not found')) {
         logger.error('🔍 [LLM TEST] Model not found. Trying fallback model...');
         try {
-          const legacyModel = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+          const legacyGenAI = generateGoogleGeminiClient();
+          const legacyModel = legacyGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
           const legacyResult = await getPromptResponse(legacyModel, 'Test');
           logger.info('✅ [LLM TEST] LLM legacy connection successful:', legacyResult);
           this.model = legacyModel; // Use legacy model as primary
@@ -675,17 +680,12 @@ export class LLMAgent {
       ];
 
       const result = await this.rateLimitedRequest(async () => {
-        return await this.genAI.models.generateContentStream({
-          model: 'gemini-2.5-pro',
-          config,
-          contents,
-        });
+        const genAI = generateGoogleGeminiClient();
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        return await getPromptResponse(model, contextPrompt);
       });
 
-      let response = '';
-      for await (const chunk of result) {
-        response += chunk.text;
-      }
+      const response = result.promptResponse || result;
       
       // Update conversation history
       this.updateConversationHistory(agentName, newPrompt, response);
@@ -949,7 +949,7 @@ Please provide your expert analysis and recommendations for this task.`;
   getStatus() {
     return {
       status: 'active',
-      model: 'gemini-2.5-pro',
+      model: 'gemini-1.5-flash',
       activeConversations: this.conversationHistory.size,
       capabilities: [
         'complex reasoning',
@@ -973,15 +973,8 @@ Please provide your expert analysis and recommendations for this task.`;
     });
 
     try {
-      const contents = [{
-        role: 'user',
-        parts: [{ text: prompt }]
-      }];
-
-      const model = this.genAI.models.geminiPro();
-      const result = await model.generateContentStream({
-        contents,
-        ...config
+      const result = await this.rateLimitedRequest(async () => {
+        return await getPromptResponse(this.model, prompt);
       });
 
       const responseTime = Date.now() - startTime;
