@@ -29,7 +29,7 @@ export class A2AService {
   /**
    * Route task with streaming support
    */
-  async routeTask(reqOrTask, res) {
+  async routeTask(reqOrTask, res, streamingContext = null) {
     try {
       // Handle both request objects and direct task objects
       const task = reqOrTask.body || reqOrTask;
@@ -40,19 +40,8 @@ export class A2AService {
         throw new Error('Content is required for task routing');
       }
 
-      // Set up SSE headers if streaming is enabled and we have a response object
-      if (streamingEnabled && res && !res.headersSent) {
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive'
-        });
-
-        // Send initial connection event
-        res.write(this.formatSSEMessage('connected', { status: 'connected' }));
-      }
-
-      const context = {
+      // Use provided streaming context or create a new one
+      const context = streamingContext || {
         userId: userId,
         projectId: canvasState?.projectId,
         streamingEnabled,
@@ -63,7 +52,14 @@ export class A2AService {
         }
       };
 
-      // Execute task with streaming
+      logger.info('🚀 Routing task with streaming context:', {
+        hasStreamingCallback: !!context.streamingCallback,
+        streamingEnabled: context.streamingEnabled,
+        userId: context.userId,
+        projectId: context.projectId
+      });
+
+      // Execute task with streaming context
       const result = await this.intelligentRouter.routeTask(content, {
         ...context,
         type,

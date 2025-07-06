@@ -34,9 +34,20 @@ export class ConversationalAgent {
         completionScore: 0.0,
         conversationTurns: 0,
         taskProgress: [],
-        finalResult: null
+        finalResult: null,
+        subTasks: [],
+        currentSubTask: null
       };
 
+      // Initial task analysis to break into subtasks
+      const taskAnalysis = await this.llmAgent.analyzeTask(userQuery, {
+        ...context,
+        agentName: this.agentName,
+        specialization: this.specialization
+      });
+
+      conversationState.subTasks = taskAnalysis.subTasks || [];
+      
       // Start natural conversation loop
       while (conversationState.completionScore < this.completionThreshold && 
              conversationState.conversationTurns < this.maxConversationTurns) {
@@ -44,8 +55,13 @@ export class ConversationalAgent {
         conversationState.conversationTurns++;
         logger.info(`💬 ${this.agentName} - Conversation turn ${conversationState.conversationTurns}`);
         
+        // Select next subtask if needed
+        if (!conversationState.currentSubTask && conversationState.subTasks.length > 0) {
+          conversationState.currentSubTask = conversationState.subTasks.shift();
+        }
+
         // Generate next prompt based on current progress
-        const nextPrompt = this.generateNextPrompt(conversationState, context);
+        const nextPrompt = await this.generateNextPrompt(conversationState, context);
         
         // Converse with LLM
         let llmResponse;
@@ -57,12 +73,22 @@ export class ConversationalAgent {
             context
           );
         } else {
-          // Continue conversation
+          // Continue conversation with context
           llmResponse = await this.llmAgent.continueConversation(
             this.agentName,
             nextPrompt,
-            { ...context, conversationState }
+            { 
+              ...context, 
+              conversationState,
+              previousResponses: conversationState.taskProgress.map(p => p.response)
+            }
           );
+        }
+
+        // Extract and validate any actions from LLM response
+        const actions = await this.extractActions(llmResponse.response);
+        if (actions.length > 0) {
+          await this.executeActions(actions, context);
         }
 
         // Analyze LLM response and update progress
@@ -72,26 +98,25 @@ export class ConversationalAgent {
           context
         );
         
+        // Update conversation state
         conversationState.completionScore = progressAnalysis.completionScore;
         conversationState.taskProgress.push({
           turn: conversationState.conversationTurns,
-          prompt: nextPrompt.substring(0, 200),
-          response: llmResponse.response.substring(0, 500),
+          prompt: nextPrompt,
+          response: llmResponse.response,
           completionScore: progressAnalysis.completionScore,
           missingElements: progressAnalysis.missingElements,
+          actions: actions,
           timestamp: new Date().toISOString()
         });
 
-        logger.info(`📊 ${this.agentName} - Progress: ${Math.round(progressAnalysis.completionScore * 100)}%`);
-        
-        // Check if task is sufficiently complete
-        if (progressAnalysis.completionScore >= this.completionThreshold) {
-          logger.info(`✅ ${this.agentName} - Task completed! (${Math.round(progressAnalysis.completionScore * 100)}%)`);
-          conversationState.finalResult = llmResponse;
-          break;
+        // Mark subtask as complete if threshold met
+        if (conversationState.currentSubTask && progressAnalysis.completionScore >= 0.8) {
+          conversationState.currentSubTask.completed = true;
+          conversationState.currentSubTask = null;
         }
 
-        // Brief pause between conversation turns (prevent overwhelming LLM)
+        // Brief pause between turns
         await this.sleep(500);
       }
 
@@ -99,7 +124,7 @@ export class ConversationalAgent {
       return this.compileFinalResponse(conversationState, context);
 
     } catch (error) {
-      logger.error(`❌ ${this.agentName} conversational execution error:`, error);
+      logger.error(`❌ ${this.agentName} execution error:`, error);
       return this.getFallbackResponse(userQuery, error);
     }
   }
@@ -147,7 +172,7 @@ export class ConversationalAgent {
         }, context);
         
         // Generate next prompt based on current progress
-        const nextPrompt = this.generateNextPrompt(conversationState, context);
+        const nextPrompt = await this.generateNextPrompt(conversationState, context);
         
         // Stream LLM collaboration start
         this.streamProgress({
@@ -186,6 +211,12 @@ export class ConversationalAgent {
           timestamp: new Date().toISOString()
         }, context);
 
+        // Extract and validate any actions from LLM response
+        const actions = await this.extractActions(llmResponse.response);
+        if (actions.length > 0) {
+          await this.executeActions(actions, context);
+        }
+
         // Analyze LLM response and update progress
         const progressAnalysis = await this.analyzeProgress(
           llmResponse, 
@@ -196,10 +227,11 @@ export class ConversationalAgent {
         conversationState.completionScore = progressAnalysis.completionScore;
         conversationState.taskProgress.push({
           turn: conversationState.conversationTurns,
-          prompt: nextPrompt.substring(0, 200),
-          response: llmResponse.response.substring(0, 500),
+          prompt: nextPrompt,
+          response: llmResponse.response,
           completionScore: progressAnalysis.completionScore,
           missingElements: progressAnalysis.missingElements,
+          actions: actions,
           timestamp: new Date().toISOString()
         });
 
@@ -290,104 +322,112 @@ export class ConversationalAgent {
   }
 
   /**
-   * Generate next prompt based on conversation progress
+   * Generate next conversation prompt based on state
    */
-  generateNextPrompt(conversationState, context) {
-    const { conversationTurns, taskProgress, originalTask } = conversationState;
-    
-    if (conversationTurns === 1) {
-      // Initial prompt
-      return this.getInitialPrompt(originalTask, context);
+  async generateNextPrompt(conversationState, context) {
+    const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
+    const promptGenerator = new DynamicPromptGenerationService();
+
+    if (conversationState.currentSubTask) {
+      // Working on specific subtask
+      return promptGenerator.getSubTaskPrompt(
+        conversationState.currentSubTask,
+        conversationState.taskProgress,
+        this.specialization
+      );
     }
-    
-    // Continuation prompt based on what's missing
-    const lastProgress = taskProgress[taskProgress.length - 1];
-    const missingElements = lastProgress.missingElements || [];
-    
-    if (missingElements.length > 0) {
-      return `Based on our previous discussion, I need you to address these missing elements: ${missingElements.join(', ')}. Please provide specific details for each missing component.`;
-    }
-    
-    // General continuation
-    return `Great progress! Now let's dive deeper and provide more specific implementation details. Focus on practical, actionable guidance that can be implemented immediately.`;
+
+    // Generate prompt for next step
+    return promptGenerator.getNextStepPrompt(
+      conversationState.originalTask,
+      conversationState.taskProgress,
+      this.specialization
+    );
   }
 
   /**
-   * Get initial prompt based on agent specialization
+   * Extract actions from LLM response
    */
-  getInitialPrompt(task, context) {
-    const basePrompt = `As a ${this.specialization}, I need your help with this task: "${task}"`;
-    
-    // Add specialization-specific context
-    const specializationPrompts = {
-      'Senior Project Manager': `${basePrompt}
+  async extractActions(response) {
+    try {
+      // Look for action blocks in response
+      const actionBlocks = response.match(/```action[\s\S]*?```/g) || [];
+      
+      return actionBlocks.map(block => {
+        const actionContent = block.replace(/```action|```/g, '').trim();
+        try {
+          return JSON.parse(actionContent);
+        } catch (e) {
+          logger.warn('Invalid action block format:', actionContent);
+          return null;
+        }
+      }).filter(action => action !== null);
 
-Please provide comprehensive project planning including:
-1. Project scope and requirements analysis
-2. Timeline and milestone planning
-3. Resource allocation and team structure
-4. Risk assessment and mitigation strategies
-5. Success metrics and deliverables
+    } catch (error) {
+      logger.error('Error extracting actions:', error);
+      return [];
+    }
+  }
 
-Focus on practical, actionable project management guidance.`,
+  /**
+   * Execute extracted actions
+   */
+  async executeActions(actions, context) {
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'update_canvas':
+            await this.executeCanvasUpdate(action, context);
+            break;
+          case 'create_file':
+            await this.executeFileCreation(action, context);
+            break;
+          case 'update_database':
+            await this.executeDatabaseUpdate(action, context);
+            break;
+          default:
+            logger.warn('Unknown action type:', action.type);
+        }
+      } catch (error) {
+        logger.error(`Error executing action ${action.type}:`, error);
+      }
+    }
+  }
 
-      'Senior System Architect': `${basePrompt}
+  /**
+   * Execute canvas update action
+   */
+  async executeCanvasUpdate(action, context) {
+    try {
+      const { canvasService } = await import('../canvasService.js');
+      await canvasService.updateCanvas(context.projectId, action.elements);
+    } catch (error) {
+      logger.error('Canvas update failed:', error);
+    }
+  }
 
-Please provide detailed system architecture including:
-1. High-level system design and components
-2. Technology stack recommendations
-3. Scalability and performance considerations
-4. Integration patterns and data flow
-5. Security and compliance requirements
+  /**
+   * Execute file creation action
+   */
+  async executeFileCreation(action, context) {
+    try {
+      const fs = await import('fs/promises');
+      await fs.writeFile(action.path, action.content);
+    } catch (error) {
+      logger.error('File creation failed:', error);
+    }
+  }
 
-Focus on scalable, maintainable architecture design.`,
-
-      'Database Architect': `${basePrompt}
-
-Please provide comprehensive database design including:
-1. Data model and entity relationships
-2. Schema design and normalization
-3. Indexing and query optimization strategies
-4. Scalability and performance planning
-5. Backup and disaster recovery
-
-Focus on efficient, scalable database architecture.`,
-
-      'API Architect': `${basePrompt}
-
-Please provide detailed API design including:
-1. RESTful endpoint structure and design
-2. Authentication and authorization patterns
-3. Rate limiting and security measures
-4. Documentation and testing strategies
-5. Integration and versioning approaches
-
-Focus on robust, secure API architecture.`,
-
-      'Senior Software Engineer': `${basePrompt}
-
-Please provide comprehensive code implementation including:
-1. Clean, well-structured code architecture
-2. Error handling and validation
-3. Testing strategies and implementation
-4. Performance optimization
-5. Documentation and maintainability
-
-Focus on production-ready, maintainable code.`,
-
-      'Technical Lead': `${basePrompt}
-
-Please provide technical leadership guidance including:
-1. Technical decision making and trade-offs
-2. Code quality standards and reviews
-3. Team coordination and mentoring
-4. Architecture oversight and validation
-5. Best practices implementation
-
-Focus on technical excellence and team guidance.`
-    };
-
-    return specializationPrompts[this.specialization] || basePrompt;
+  /**
+   * Execute database update action
+   */
+  async executeDatabaseUpdate(action, context) {
+    try {
+      const { dbService } = await import('../dbService.js');
+      await dbService.executeUpdate(action.query, action.params);
+    } catch (error) {
+      logger.error('Database update failed:', error);
+    }
   }
 
   /**

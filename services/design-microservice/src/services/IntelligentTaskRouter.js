@@ -96,21 +96,17 @@ export class IntelligentTaskRouter {
           const { LLMAgent } = await import('./agents/LLMAgent.js');
           const llmAgent = LLMAgent.getInstance();
           
-          const enhancementPrompt = `
-Analyze this task for complexity and required skills:
-"${prompt}"
-
-Current CPU analysis: ${JSON.stringify(cpuAnalysis)}
-
-Provide analysis in this JSON format:
-{
-  "complexity": 0.8,
-  "confidence": 0.9,
-  "intent": "architecture_design",
-  "requiredSkills": ["system_design", "microservices"],
-  "subTaskCount": 3,
-  "reasoning": "explanation"
-}`;
+          // Generate dynamic enhancement prompt using CPU models
+        const { DynamicPromptGenerationService } = await import('./DynamicPromptGenerationService.js');
+        const promptGenerator = new DynamicPromptGenerationService();
+        
+        const enhancementPrompt = await promptGenerator.generatePrompt('task_enhancement', {
+          userQuery: prompt,
+          cpuAnalysis: JSON.stringify(cpuAnalysis),
+          analysisType: 'complexity_and_skills',
+          expectedFormat: 'json',
+          complexityLevel: cpuAnalysis.complexity || 'medium'
+        });
 
           const llmResponse = await llmAgent.execute(enhancementPrompt);
           
@@ -384,8 +380,8 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
     });
     
     try {
-      // Select best agent for the task
-      const selectedAgent = this.selectAgentForSimpleTask(analysis);
+      // Select best agent for the task using intelligent selection
+      const selectedAgent = await this.selectAgentForSimpleTask(prompt, analysis);
       
       // Ensure userId and projectId are in context
       const enhancedContext = {
@@ -403,7 +399,14 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
         projectId: enhancedContext.projectId
       });
       
-      // Execute with single agent
+      // Execute with single agent - ensure streaming context is passed
+      logger.info('🎯 Executing simple task with enhanced context:', {
+        hasStreamingCallback: !!enhancedContext.streamingCallback,
+        streamingEnabled: enhancedContext.streamingEnabled,
+        userId: enhancedContext.userId,
+        projectId: enhancedContext.projectId
+      });
+      
       const result = await this.orchestrator.executeCoordinatedTask(
         prompt,
         analysis,
@@ -482,10 +485,17 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
         projectId: enhancedContext.projectId
       });
       
-      // Execute with coordinated agents
+      // Execute with coordinated agents - Fix parameter order and ensure streaming context
+      logger.info('🎯 Executing complex task with enhanced context:', {
+        hasStreamingCallback: !!enhancedContext.streamingCallback,
+        streamingEnabled: enhancedContext.streamingEnabled,
+        userId: enhancedContext.userId,
+        projectId: enhancedContext.projectId
+      });
+      
       const result = await this.orchestrator.executeCoordinatedTask(
-        selectedAgents,
         prompt,
+        { ...analysis, selectedAgents },
         enhancedContext
       );
 
@@ -516,14 +526,44 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
   }
 
   /**
-   * Select single agent for simple tasks
+   * INTELLIGENT agent selection for simple tasks using CPU models
    */
-  selectAgentForSimpleTask(analysis) {
+  async selectAgentForSimpleTask(originalPrompt, analysis) {
+    try {
+      logger.info('🎯 Starting intelligent agent selection for simple task');
+      
+      // Use Intent Classification Service for intelligent routing
+      const { IntentClassificationService } = await import('./IntentClassificationService.js');
+      const intentService = new IntentClassificationService();
+      
+      const intentAnalysis = await intentService.classifyAndRoute(originalPrompt, analysis);
+      
+      const selectedAgent = intentAnalysis.suggestedAgents[0] || 'projectManager';
+      
+      logger.info('✅ Intelligent agent selection complete:', {
+        selectedAgent,
+        primaryIntent: intentAnalysis.primaryIntent.intent,
+        confidence: intentAnalysis.primaryIntent.confidence,
+        conversationStyle: intentAnalysis.conversationStyle
+      });
+      
+      return selectedAgent;
+      
+    } catch (error) {
+      logger.error('❌ Intelligent agent selection failed, using fallback:', error);
+      return this.fallbackAgentSelection(analysis);
+    }
+  }
+
+  /**
+   * Fallback agent selection for simple tasks
+   */
+  fallbackAgentSelection(analysis) {
     // Safely handle requiredSkills - it might be undefined or empty
     const requiredSkills = analysis.requiredSkills || [];
     const intent = analysis.intent || 'general';
     
-    logger.info('🎯 Selecting agent for simple task:', {
+    logger.info('🎯 Using fallback agent selection for simple task:', {
       intent,
       requiredSkills,
       complexity: analysis.complexity,
@@ -573,62 +613,127 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
   }
 
   /**
-   * Select multiple agents for complex tasks
+   * INTELLIGENT agent selection for complex tasks using CPU models with confidence check
    */
   async selectAgentsForComplexTask(analysis, originalPrompt) {
     try {
-      logger.info('🧠 Using CPU models for intelligent agent selection');
+      logger.info('🧠 Using CPU models for intelligent agent selection with confidence check');
       
-      // Use CPU models to intelligently select agents based on prompt understanding
-      const agentSelectionPrompt = `
-Analyze this task and determine which specialized agents are needed: "${originalPrompt}"
-
-Available agents and their capabilities:
-- projectManager: Project planning, coordination, timelines, resource allocation
-- architectureDesigner: System architecture, scalability, design patterns, technical decisions
-- databaseDesigner: Database schema, data modeling, optimization, queries
-- apiDesigner: REST APIs, endpoints, authentication, integration
-- codeGenerator: Code implementation, programming, testing, debugging
-- techLead: Technical leadership, code review, best practices, architecture oversight
-
-Return ONLY a JSON array of agent names that are needed for this task, ordered by priority.
-Example: ["projectManager", "architectureDesigner", "databaseDesigner"]
-`;
-
-      // Use DistilBERT for intelligent agent classification
-      const cpuResponse = await this.complexityAnalyzer.analyzeComplexity(agentSelectionPrompt);
+      // Step 1: Try CPU model-based agent selection first
+      const cpuAgentSelection = await this.selectAgentsWithCPUModels(originalPrompt, analysis);
       
-      if (cpuResponse.success && cpuResponse.analysis.recommendedAgents) {
-        logger.info('✅ CPU models selected agents:', cpuResponse.analysis.recommendedAgents);
-        return cpuResponse.analysis.recommendedAgents;
+      // Step 2: Check confidence level
+      if (cpuAgentSelection.confidence >= 0.7) {
+        logger.info('✅ High confidence CPU model agent selection:', {
+          agents: cpuAgentSelection.selectedAgents,
+          confidence: cpuAgentSelection.confidence,
+          source: cpuAgentSelection.source
+        });
+        return cpuAgentSelection.selectedAgents;
       }
       
-      // Fallback to LLM if CPU models don't provide agent recommendations
-      logger.info('🤖 [TASK ROUTER] Using LLM for agent selection fallback');
+      // Step 3: Low confidence - use LLM for agent selection
+      logger.info('⚠️ Low confidence from CPU models, using LLM for agent selection:', {
+        cpuConfidence: cpuAgentSelection.confidence,
+        cpuAgents: cpuAgentSelection.selectedAgents
+      });
       
-      const llmResponse = await this.llmAgent.execute(agentSelectionPrompt, {
+      return await this.selectAgentsWithLLM(originalPrompt, analysis, cpuAgentSelection);
+      
+    } catch (error) {
+      logger.error('❌ Error in intelligent agent selection:', error);
+      return this.selectAgentsFromAnalysis(analysis);
+    }
+  }
+
+  /**
+   * Select agents using CPU models (DistilBERT + CodeBERT)
+   */
+  async selectAgentsWithCPUModels(originalPrompt, analysis) {
+    try {
+      // Use CPU models for intelligent agent selection
+      const { DistilBERTComplexityAnalyzer } = await import('./cpuModels/DistilBERTComplexityAnalyzer.js');
+      const complexityAnalyzer = new DistilBERTComplexityAnalyzer();
+      
+      const agentRecommendation = await complexityAnalyzer.recommendAgents(originalPrompt, analysis);
+      
+      return {
+        selectedAgents: agentRecommendation || ['projectManager'],
+        confidence: 0.8, // DistilBERT typically has good confidence for classification
+        source: 'cpu_models',
+        method: 'distilbert_classification'
+      };
+      
+    } catch (error) {
+      logger.error('❌ CPU model agent selection failed:', error);
+      return {
+        selectedAgents: ['projectManager'],
+        confidence: 0.3,
+        source: 'fallback',
+        method: 'error_fallback'
+      };
+    }
+  }
+
+  /**
+   * Select agents using LLM when CPU confidence is low
+   */
+  async selectAgentsWithLLM(originalPrompt, analysis, cpuResult) {
+    try {
+      logger.info('🤖 Using LLM for agent selection with CPU context');
+      
+      // Generate dynamic agent selection prompt
+      const { DynamicPromptGenerationService } = await import('./DynamicPromptGenerationService.js');
+      const promptGenerator = new DynamicPromptGenerationService();
+      
+      const agentSelectionPrompt = await promptGenerator.getAgentSelectionPrompt(originalPrompt, {
+        availableAgents: this.getAvailableAgentsList(),
+        complexity: analysis.complexity,
+        domain: analysis.domain || 'general',
+        cpuRecommendation: cpuResult.selectedAgents,
+        cpuConfidence: cpuResult.confidence
+      });
+
+      const { LLMAgent } = await import('./agents/LLMAgent.js');
+      const llmAgent = LLMAgent.getInstance();
+      
+      const llmResponse = await llmAgent.execute(agentSelectionPrompt, {
         responseFormat: 'json',
-        maxTokens: 100
+        maxTokens: 200
       });
       
       try {
         const responseText = typeof llmResponse.content === 'string' ? llmResponse.content : JSON.stringify(llmResponse.content);
         const agentList = JSON.parse(responseText);
         if (Array.isArray(agentList)) {
-          logger.info('✅ [TASK ROUTER] LLM selected agents:', agentList);
+          logger.info('✅ LLM selected agents with CPU context:', agentList);
           return agentList;
         }
       } catch (parseError) {
-        logger.warn('⚠️ [TASK ROUTER] Could not parse LLM agent selection response');
+        logger.warn('⚠️ Could not parse LLM agent selection response, using CPU recommendation');
+        return cpuResult.selectedAgents;
       }
       
+      return cpuResult.selectedAgents;
+      
     } catch (error) {
-      logger.error('❌ Error in intelligent agent selection:', error);
+      logger.error('❌ LLM agent selection failed:', error);
+      return cpuResult.selectedAgents;
     }
-    
-    // Final fallback to analysis-based selection
-    logger.info('🔄 Using analysis-based agent selection as final fallback');
-    return this.selectAgentsFromAnalysis(analysis);
+  }
+
+  /**
+   * Get list of available agents
+   */
+  getAvailableAgentsList() {
+    return [
+      'projectManager',
+      'architectureDesigner', 
+      'databaseDesigner',
+      'apiDesigner',
+      'codeGenerator',
+      'techLead'
+    ];
   }
 
   selectAgentsFromAnalysis(analysis) {

@@ -126,15 +126,15 @@ export class AgentOrchestrator {
    * Execute complex task with coordinated agents
    */
   async executeCoordinatedTask(prompt, analysis, context) {
-    const agents = this.selectAgentsForTask(analysis);
+    const agents = this.selectAgentsForTask(prompt, analysis);
     
-    if (!agents.length) {
+    if (!agents.selectedAgents.length) {
       throw new Error('No suitable agents found for task');
     }
 
     logger.info('🤖 Executing complex task with agents:', {
-      agentCount: agents.length,
-      agentTypes: agents.map(a => a.constructor.name),
+      agentCount: agents.selectedAgents.length,
+      agentTypes: agents.selectedAgents.map(a => a.constructor.name),
       complexity: analysis.complexity
     });
 
@@ -142,12 +142,12 @@ export class AgentOrchestrator {
     const sharedContext = {
       ...context,
       taskAnalysis: analysis,
-      collaboratingAgents: agents.map(a => a.constructor.name)
+      collaboratingAgents: agents.selectedAgents.map(a => a.constructor.name)
     };
 
     // Execute in parallel with shared context
     const results = await Promise.all(
-      agents.map(agent => agent.execute(prompt, sharedContext))
+      agents.selectedAgents.map(agent => agent.execute(prompt, sharedContext))
     );
 
     // Combine results
@@ -168,20 +168,74 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Select multiple agents for task
+   * INTELLIGENT agent selection using Intent Classification and CPU Models
    */
-  selectAgentsForTask(analysis) {
-    const { taskType, requiredSkills = [] } = analysis;
-    const selectedAgents = [];
+  async selectAgentsForTask(userQuery, analysis = {}) {
+    try {
+      logger.info('🤖 Starting intelligent agent selection for:', userQuery.substring(0, 100) + '...');
 
-    // Always include project manager for coordination
-    selectedAgents.push(this.projectManager);
+      // Use DistilBERT for agent selection
+      const { DistilBERTComplexityAnalyzer } = await import('../cpuModels/DistilBERTComplexityAnalyzer.js');
+      const analyzer = new DistilBERTComplexityAnalyzer();
+      
+      // Analyze task requirements and select agents
+      const agentSelectionPrompt = `Analyze this task and determine which specialized agents are needed: "${userQuery}"`;
+      const agentAnalysis = await analyzer.analyzeComplexity(agentSelectionPrompt);
+      
+      // Get recommended agents with confidence scores
+      const selectedAgents = agentAnalysis.recommendedAgents || ['projectManager'];
+      
+      logger.info('✅ CPU-based agent selection completed:', {
+        selectedAgents,
+        confidence: agentAnalysis.confidence,
+        complexity: agentAnalysis.complexity
+      });
 
-    if (requiredSkills.includes('architecture')) {
-      selectedAgents.push(this.architectureDesigner);
+      // Return both agents and metadata for intelligent routing
+      return {
+        selectedAgents,
+        agentAnalysis,
+        routingStrategy: agentAnalysis.complexity > 0.7 ? 'coordinated' : 'simple',
+        recommendedModel: this.selectOptimalModel(agentAnalysis),
+        conversationStyle: 'professional'
+      };
+
+    } catch (error) {
+      logger.error('❌ Intelligent agent selection failed, using fallback:', error);
+      return this.fallbackAgentSelection(analysis);
     }
+  }
 
-    return selectedAgents;
+  /**
+   * Select optimal model based on task analysis
+   */
+  selectOptimalModel(analysis) {
+    if (analysis.complexity > 0.8) {
+      return 'llm'; // Use main LLM for complex tasks
+    }
+    
+    if (analysis.technicalDomains?.includes('code')) {
+      return 'codebert';
+    }
+    
+    return analysis.complexity > 0.5 ? 'llm' : 'distilbert';
+  }
+
+  /**
+   * Fallback agent selection
+   */
+  fallbackAgentSelection(analysis) {
+    return {
+      selectedAgents: ['projectManager'],
+      agentAnalysis: {
+        complexity: 0.5,
+        confidence: 0.3,
+        source: 'fallback'
+      },
+      routingStrategy: 'simple',
+      recommendedModel: 'llm',
+      conversationStyle: 'professional'
+    };
   }
 
   /**

@@ -714,13 +714,16 @@ export class LLMAgent {
         streamingEnabled: context.streamingEnabled || false
       });
 
+      // Generate dynamic collaboration prompt
+      const collaborationPrompt = await this.buildCollaborationPrompt(agentName, task, context);
+      
       // Check if streaming is enabled
       if (context.streamingEnabled && context.streamingCallback) {
-        return await this.collaborateWithAgentStreaming(agentName, task, context);
+        return await this.collaborateWithAgentStreaming(agentName, collaborationPrompt, context);
       }
 
       const result = await this.rateLimitedRequest(async () => {
-        return await getPromptResponse(this.model, task);
+        return await getPromptResponse(this.model, collaborationPrompt);
       });
 
       const response = result.promptResponse || result;
@@ -932,7 +935,30 @@ Please provide a comprehensive response that addresses all aspects of the reques
   /**
    * Build collaboration prompt for agent interaction
    */
-  buildCollaborationPrompt(agentName, task, context) {
+  async buildCollaborationPrompt(agentName, task, context) {
+    try {
+      // Use dynamic prompt generation for collaboration prompts
+      const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
+      const promptGenerator = new DynamicPromptGenerationService();
+      
+      const dynamicPrompt = await promptGenerator.getAgentCollaborationPrompt(agentName, task, {
+        domain: context.domain || 'software_development',
+        complexity: context.complexity || 'medium',
+        integrationNeeds: context.integrationNeeds || 'standard',
+        userContext: context.userContext || {},
+        requirements: context.requirements || 'general'
+      });
+      
+      logger.info('✅ Dynamic collaboration prompt generated for:', agentName);
+      return dynamicPrompt;
+      
+    } catch (error) {
+      logger.error('❌ Dynamic prompt generation failed, using fallback:', error);
+      return this.buildFallbackCollaborationPrompt(agentName, task, context);
+    }
+  }
+
+  buildFallbackCollaborationPrompt(agentName, task, context) {
     const agentPersonas = {
       'architectureDesigner': 'You are a Senior System Architect with expertise in scalable system design, microservices, and architectural patterns.',
       'databaseDesigner': 'You are a Database Architect specializing in schema design, optimization, and data modeling.',

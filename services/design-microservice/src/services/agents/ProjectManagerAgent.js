@@ -12,6 +12,202 @@ export class ProjectManagerAgent extends ConversationalAgent {
     logger.info('🎯 ProjectManagerAgent initialized with LLM-driven task analyzer');
   }
 
+  /**
+   * Override execute to add project-specific context
+   */
+  async execute(userQuery, context = {}) {
+    try {
+      logger.info('🎯 ProjectManager starting natural conversation with streaming');
+      logger.info('📋 ProjectManager received context:', {
+        hasUserId: !!context.userId,
+        hasProjectId: !!context.projectId,
+        contextKeys: Object.keys(context)
+      });
+
+      // Validate required context
+      if (!context.userId || !context.projectId) {
+        throw new Error('userId and projectId are required for ProjectManager execution');
+      }
+
+      // Get conversation context from VectorDB
+      const conversationContext = await vectorDB.getConversationContext(context.userId, context.projectId, 5);
+      logger.info(`📚 Retrieved ${conversationContext.length} conversation turns from VectorDB`);
+
+      // Add project-specific context
+      const enhancedContext = {
+        ...context,
+        streamingEnabled: true,
+        conversationContext,
+        agentCapabilities: {
+          projectPlanning: true,
+          resourceManagement: true,
+          taskCoordination: true,
+          riskAssessment: true
+        }
+      };
+
+      // Use parent's execute method which implements iterative conversation
+      const result = await super.execute(userQuery, enhancedContext);
+
+      // Store conversation in VectorDB
+      await vectorDB.storeConversationTurn(context.userId, context.projectId, {
+        turnNumber: result.conversationTurns || 1,
+        userMessage: userQuery,
+        agentResponse: result.response?.content || result.content,
+        agentName: this.agentName,
+        completionScore: result.completionScore || 0.8,
+        context: { conversationContext },
+        timestamp: new Date().toISOString()
+      });
+
+      return result;
+
+    } catch (error) {
+      logger.error('❌ ProjectManager execution error:', error);
+      return this.getFallbackResponse(userQuery, error);
+    }
+  }
+
+  /**
+   * Override to add project-specific prompt generation
+   */
+  async generateNextPrompt(conversationState, context) {
+    const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
+    const promptGenerator = new DynamicPromptGenerationService();
+
+    // If working on a subtask
+    if (conversationState.currentSubTask) {
+      return promptGenerator.getProjectSubTaskPrompt(
+        conversationState.currentSubTask,
+        conversationState.taskProgress,
+        context.conversationContext || []
+      );
+    }
+
+    // Generate prompt for next step
+    return promptGenerator.getProjectNextStepPrompt(
+      conversationState.originalTask,
+      conversationState.taskProgress,
+      context.conversationContext || []
+    );
+  }
+
+  /**
+   * Override to add project-specific action handling
+   */
+  async executeActions(actions, context) {
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'update_project':
+            await this.executeProjectUpdate(action, context);
+            break;
+          case 'create_task':
+            await this.executeTaskCreation(action, context);
+            break;
+          case 'assign_resources':
+            await this.executeResourceAssignment(action, context);
+            break;
+          case 'update_canvas':
+            await this.executeCanvasUpdate(action, context);
+            break;
+          default:
+            // Use parent's action execution for common actions
+            await super.executeActions([action], context);
+        }
+      } catch (error) {
+        logger.error(`Error executing project action ${action.type}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Project-specific action handlers
+   */
+  async executeProjectUpdate(action, context) {
+    try {
+      const { projectService } = await import('../projectService.js');
+      await projectService.updateProject(context.projectId, action.updates);
+    } catch (error) {
+      logger.error('Project update failed:', error);
+    }
+  }
+
+  async executeTaskCreation(action, context) {
+    try {
+      const { taskService } = await import('../taskService.js');
+      await taskService.createTask(context.projectId, action.task);
+    } catch (error) {
+      logger.error('Task creation failed:', error);
+    }
+  }
+
+  async executeResourceAssignment(action, context) {
+    try {
+      const { resourceService } = await import('../resourceService.js');
+      await resourceService.assignResources(context.projectId, action.assignments);
+    } catch (error) {
+      logger.error('Resource assignment failed:', error);
+    }
+  }
+
+  /**
+   * Execute canvas update action
+   */
+  async executeCanvasUpdate(action, context) {
+    try {
+      const { canvasService } = await import('../canvasService.js');
+      const { FLAN_T5_Client } = await import('../cpuModels/FLAN_T5_Client.js');
+      
+      // Use FLAN-T5 to merge LLM response with existing canvas
+      const flant5 = new FLAN_T5_Client();
+      const mergedElements = await flant5.mergeCanvasElements(
+        action.elements,
+        context.canvasState || {}
+      );
+
+      // Update canvas with merged elements
+      await canvasService.updateCanvas(context.projectId, {
+        type: 'canvas_update',
+        elements: mergedElements,
+        description: action.description || 'Canvas updated by ProjectManager'
+      });
+
+      // Stream progress if enabled
+      if (context.streamingEnabled && context.streamingCallback) {
+        context.streamingCallback({
+          type: 'canvas_update',
+          status: 'Canvas elements updated',
+          elements: mergedElements,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } catch (error) {
+      logger.error('Canvas update failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Override to add project-specific response compilation
+   */
+  compileFinalResponse(conversationState, context) {
+    const baseResponse = super.compileFinalResponse(conversationState, context);
+
+    // Add project-specific metadata
+    return {
+      ...baseResponse,
+      projectMetadata: {
+        projectId: context.projectId,
+        conversationTurns: conversationState.conversationTurns,
+        completedSubTasks: conversationState.subTasks.filter(t => t.completed).length,
+        totalSubTasks: conversationState.subTasks.length,
+        actionsTaken: conversationState.taskProgress.reduce((sum, p) => sum + (p.actions?.length || 0), 0)
+      }
+    };
+  }
+
   async planProject(requirements) {
     try {
       logger.info('Planning project for requirements:', requirements);
@@ -42,26 +238,6 @@ export class ProjectManagerAgent extends ConversationalAgent {
     } catch (error) {
       logger.error('Error tracking progress:', error);
       throw error;
-    }
-  }
-
-  async execute(userQuery, context = {}) {
-    try {
-      logger.info('🎯 ProjectManager starting natural conversation with streaming');
-      logger.info('📋 ProjectManager received context:', {
-        hasUserId: !!context.userId,
-        hasProjectId: !!context.projectId,
-        userId: context.userId,
-        projectId: context.projectId,
-        contextKeys: Object.keys(context)
-      });
-      
-      // Use parent's conversational execute with streaming support
-      return await this.executeWithStreaming(userQuery, context);
-      
-    } catch (error) {
-      logger.error('❌ ProjectManager execution error:', error);
-      return this.getFallbackResponse(userQuery, error);
     }
   }
 
@@ -96,20 +272,16 @@ export class ProjectManagerAgent extends ConversationalAgent {
     }, context);
 
     try {
-      // Step 1: Initial task analysis
-      const taskPrompt = `
-As a Senior Project Manager, analyze this task and provide a detailed response:
-
-TASK: "${userQuery}"
-
-Please provide:
-1. Task analysis and scope
-2. Key requirements and deliverables
-3. Technical considerations
-4. Implementation approach
-5. Potential challenges and solutions
-
-Format your response in a clear, structured way.`;
+      // Step 1: Generate dynamic task analysis prompt
+      const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
+      const promptGenerator = new DynamicPromptGenerationService();
+      
+      const taskPrompt = await promptGenerator.getTaskAnalysisPrompt(userQuery, {
+        agentName: this.agentName,
+        complexity: context.complexity || 'medium',
+        domain: context.domain || 'software_development',
+        userLevel: context.userLevel || 'intermediate'
+      });
 
       const { LLMAgent } = await import('./LLMAgent.js');
       const llmAgent = LLMAgent.getInstance();
@@ -300,14 +472,12 @@ This analysis was generated through iterative collaboration with AI to ensure co
 
   async handleTask(task, context = {}) {
     try {
-      logger.info('🎯 ProjectManager handling task:', task);
+      logger.info('🎯 ProjectManager handling task with iterative conversation:', task);
       
-      // If streaming is enabled, use streaming execution
-      if (context.streamingEnabled && context.streamingCallback) {
-        return await this.executeWithStreaming(task, context);
-      }
+      // IMPORTANT: Use ConversationalAgent's iterative conversation instead of custom implementation
+      // This enables natural conversation until 80% completion with sub-prompts
+      logger.info('💬 Using ConversationalAgent iterative conversation (80% completion threshold)');
       
-      // Otherwise, use standard execution
       return await this.execute(task, context);
       
     } catch (error) {

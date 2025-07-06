@@ -477,49 +477,126 @@ export class DistilBERTComplexityAnalyzer {
       // Extract the actual task from the agent selection prompt
       const taskMatch = prompt.match(/Analyze this task and determine which specialized agents are needed: "([^"]+)"/);
       const actualTask = taskMatch ? taskMatch[1] : prompt;
+
+      // Define agent capabilities for DistilBERT to analyze
+      const agentCapabilities = {
+        projectManager: {
+          skills: ['project planning', 'task coordination', 'resource management', 'timeline estimation'],
+          domains: ['project management', 'agile', 'team coordination']
+        },
+        architectureDesigner: {
+          skills: ['system design', 'scalability planning', 'design patterns', 'architectural decisions'],
+          domains: ['software architecture', 'system integration', 'microservices']
+        },
+        databaseDesigner: {
+          skills: ['data modeling', 'schema design', 'query optimization', 'data relationships'],
+          domains: ['databases', 'data storage', 'data access']
+        },
+        apiDesigner: {
+          skills: ['API design', 'endpoint planning', 'authentication', 'integration patterns'],
+          domains: ['web services', 'REST', 'GraphQL', 'service integration']
+        },
+        codeGenerator: {
+          skills: ['code implementation', 'testing', 'debugging', 'optimization'],
+          domains: ['software development', 'programming', 'testing']
+        },
+        techLead: {
+          skills: ['code review', 'best practices', 'technical guidance', 'standards enforcement'],
+          domains: ['software quality', 'technical leadership', 'mentoring']
+        }
+      };
+
+      // Use DistilBERT to analyze task requirements
+      const taskAnalysis = await this.analyzeTaskRequirements(actualTask);
       
-      const agents = [];
-      const lowerTask = actualTask.toLowerCase();
-      
-      // Use CPU model analysis to intelligently select agents
-      if (lowerTask.includes('project') || lowerTask.includes('plan') || lowerTask.includes('manage') || lowerTask.includes('coordinate')) {
-        agents.push('projectManager');
+      // Match task requirements with agent capabilities
+      const agentScores = {};
+      for (const [agentName, capability] of Object.entries(agentCapabilities)) {
+        const skillMatch = await this.matchCapabilities(taskAnalysis.requiredSkills, capability.skills);
+        const domainMatch = await this.matchCapabilities(taskAnalysis.domains, capability.domains);
+        agentScores[agentName] = (skillMatch + domainMatch) / 2;
       }
-      
-      if (lowerTask.includes('architecture') || lowerTask.includes('system') || lowerTask.includes('design pattern') || lowerTask.includes('scalable')) {
-        agents.push('architectureDesigner');
-      }
-      
-      if (lowerTask.includes('database') || lowerTask.includes('schema') || lowerTask.includes('data model') || lowerTask.includes('sql')) {
-        agents.push('databaseDesigner');
-      }
-      
-      if (lowerTask.includes('api') || lowerTask.includes('endpoint') || lowerTask.includes('rest') || lowerTask.includes('integration')) {
-        agents.push('apiDesigner');
-      }
-      
-      if (lowerTask.includes('code') || lowerTask.includes('implement') || lowerTask.includes('program') || lowerTask.includes('develop')) {
-        agents.push('codeGenerator');
-      }
-      
-      if (lowerTask.includes('review') || lowerTask.includes('standards') || lowerTask.includes('best practices') || agents.length > 2) {
-        agents.push('techLead');
-      }
-      
+
+      // Select agents with high confidence scores
+      const selectedAgents = Object.entries(agentScores)
+        .filter(([_, score]) => score >= 0.7) // Only select agents with high confidence
+        .sort((a, b) => b[1] - a[1]) // Sort by score descending
+        .map(([agent]) => agent)
+        .slice(0, 4); // Limit to 4 agents max
+
       // Ensure we have at least one agent
-      if (agents.length === 0) {
-        agents.push('projectManager');
+      if (selectedAgents.length === 0) {
+        selectedAgents.push('projectManager'); // Default fallback
       }
+
+      logger.info('✅ CPU model recommended agents:', {
+        selectedAgents,
+        scores: agentScores
+      });
       
-      // Remove duplicates and limit to 4 agents max
-      const uniqueAgents = [...new Set(agents)].slice(0, 4);
-      
-      logger.info('✅ CPU model recommended agents:', uniqueAgents);
-      return uniqueAgents;
-      
+      return selectedAgents;
+
     } catch (error) {
       logger.error('❌ Error in agent recommendation:', error);
       return ['projectManager']; // Fallback
+    }
+  }
+
+  /**
+   * Analyze task requirements using DistilBERT
+   */
+  async analyzeTaskRequirements(task) {
+    try {
+      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: task,
+          analysis_type: 'task_requirements'
+        })
+      });
+
+      if (!response.ok) throw new Error(`DistilBERT analysis failed: ${response.status}`);
+      
+      const result = await response.json();
+      return {
+        requiredSkills: result.required_skills || [],
+        domains: result.domains || [],
+        confidence: result.confidence || 0.5
+      };
+
+    } catch (error) {
+      logger.error('❌ Task requirement analysis failed:', error);
+      return {
+        requiredSkills: [],
+        domains: [],
+        confidence: 0.3
+      };
+    }
+  }
+
+  /**
+   * Match capabilities using DistilBERT similarity
+   */
+  async matchCapabilities(required, available) {
+    try {
+      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/similarity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_texts: required,
+          target_texts: available
+        })
+      });
+
+      if (!response.ok) throw new Error(`DistilBERT similarity failed: ${response.status}`);
+      
+      const result = await response.json();
+      return result.similarity_score || 0.5;
+
+    } catch (error) {
+      logger.error('❌ Capability matching failed:', error);
+      return 0.3;
     }
   }
 

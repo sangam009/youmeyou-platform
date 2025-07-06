@@ -213,6 +213,108 @@ def list_models():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/merge', methods=['POST'])
+def merge_elements():
+    """Merge canvas elements endpoint"""
+    if not ollama_ready:
+        return jsonify({
+            'success': False,
+            'error': 'Ollama service not ready yet'
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data or 'prompt' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Prompt is required'
+            }), 400
+        
+        prompt = f"""You are a canvas element merger. Your task is to intelligently merge new canvas elements with the existing canvas state.
+
+CONTEXT:
+{data['prompt']}
+
+RULES:
+1. Preserve existing element IDs and positions when possible
+2. Add new elements with unique IDs
+3. Update properties of existing elements if changed
+4. Maintain connections and relationships
+5. Remove elements marked for deletion
+6. Validate final structure
+
+OUTPUT FORMAT:
+Return a valid JSON object with the following structure:
+{{
+  "nodes": [
+    {{
+      "id": "string",
+      "type": "string",
+      "position": {{ "x": number, "y": number }},
+      "data": {{ ... }}
+    }}
+  ],
+  "edges": [
+    {{
+      "id": "string",
+      "source": "string",
+      "target": "string",
+      "type": "string",
+      "data": {{ ... }}
+    }}
+  ],
+  "metadata": {{ ... }}
+}}
+
+Analyze the existing and new elements, then output the merged result following the rules above."""
+
+        max_tokens = data.get('max_length', 2048)  # Increased for complex merges
+        temperature = data.get('temperature', 0.3)  # Lower for more deterministic output
+        
+        # Generate merged elements using Ollama
+        merged_elements = generate_with_ollama(prompt, max_tokens, temperature)
+        
+        if merged_elements is None:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to merge elements'
+            }), 500
+
+        # Try to parse the response as JSON
+        try:
+            # Find JSON object in response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', merged_elements)
+            if json_match:
+                merged_json = json.loads(json_match.group(0))
+            else:
+                raise ValueError("No JSON object found in response")
+
+            # Validate structure
+            if not all(key in merged_json for key in ['nodes', 'edges', 'metadata']):
+                raise ValueError("Missing required keys in merged elements")
+
+            return jsonify({
+                'success': True,
+                'merged_elements': merged_json,
+                'prompt': data['prompt'],
+                'model': model_name
+            })
+        except Exception as e:
+            logger.error(f"Error parsing merged elements: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Invalid merged elements format: {str(e)}'
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error in merge endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     logger.info("Starting Mistral 7B service with Ollama...")
     

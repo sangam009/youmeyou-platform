@@ -117,8 +117,8 @@ class AgentController {
       };
 
       try {
-        // Process the request
-        const result = await a2aService.routeTask({ body: task }, res);
+        // Process the request with streaming context
+        const result = await a2aService.routeTask({ body: task }, res, streamingContext);
 
         // Send completion event if stream hasn't ended
         if (streamingEnabled && !res.writableEnded) {
