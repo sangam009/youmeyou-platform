@@ -405,19 +405,25 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
       
       // Execute with single agent
       const result = await this.orchestrator.executeCoordinatedTask(
-        [selectedAgent],
         prompt,
+        analysis,
         enhancedContext
       );
+
+      // Extract the actual agent response from the coordinated task result
+      const agentResponse = result.results && result.results[0] ? result.results[0] : null;
+      const responseContent = agentResponse?.response?.content || 'Task completed successfully';
+      const responseAnalysis = agentResponse?.response?.analysis || prompt;
+      const responseSuggestions = agentResponse?.response?.suggestions || [];
 
       return {
         executionType: 'simple',
         complexity: analysis.complexity,
         agent: selectedAgent,
         response: {
-          content: result.summary || 'Task completed successfully',
-          analysis: result.analysis || 'Simple task analysis completed',
-          suggestions: result.suggestions || []
+          content: responseContent,
+          analysis: responseAnalysis,
+          suggestions: responseSuggestions
         },
         metadata: {
           executionTime: Date.now(),
