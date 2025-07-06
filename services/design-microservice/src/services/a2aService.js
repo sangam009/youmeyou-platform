@@ -41,15 +41,19 @@ export class A2AService {
       }
 
       // Use provided streaming context or create a new one
-      const context = streamingContext || {
+      const context = {
         userId: userId,
         projectId: canvasState?.projectId,
+        canvasState,
         streamingEnabled,
+        type,
+        complexity: 0.5, // Will be updated by analysis
         streamingCallback: (data) => {
           if (streamingEnabled && res) {
             res.write(this.formatSSEMessage(data.type, data));
           }
-        }
+        },
+        ...streamingContext // Merge any additional context
       };
 
       logger.info('🚀 Routing task with streaming context:', {
@@ -60,11 +64,7 @@ export class A2AService {
       });
 
       // Execute task with streaming context
-      const result = await this.intelligentRouter.routeTask(content, {
-        ...context,
-        type,
-        complexity: 0.5 // Will be updated by analysis
-      });
+      const result = await this.intelligentRouter.routeTask(content, context);
 
       // Send completion event if streaming
       if (streamingEnabled && res) {

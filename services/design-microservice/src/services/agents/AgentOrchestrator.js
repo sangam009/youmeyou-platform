@@ -126,15 +126,20 @@ export class AgentOrchestrator {
    * Execute complex task with coordinated agents
    */
   async executeCoordinatedTask(prompt, analysis, context) {
-    const agents = this.selectAgentsForTask(prompt, analysis);
+    const agentSelection = await this.selectAgentsForTask(prompt, analysis);
     
-    if (!agents.selectedAgents.length) {
-      throw new Error('No suitable agents found for task');
+    if (!agentSelection || !agentSelection.selectedAgents || agentSelection.selectedAgents.length === 0) {
+      logger.warn('⚠️ No agents selected, falling back to project manager');
+      agentSelection = {
+        selectedAgents: ['projectManager'],
+        routingStrategy: 'simple',
+        conversationStyle: 'professional'
+      };
     }
 
     logger.info('🤖 Executing complex task with agents:', {
-      agentCount: agents.selectedAgents.length,
-      agentTypes: agents.selectedAgents.map(a => a.constructor.name),
+      agentCount: agentSelection.selectedAgents.length,
+      agentTypes: agentSelection.selectedAgents,
       complexity: analysis.complexity
     });
 
@@ -142,12 +147,24 @@ export class AgentOrchestrator {
     const sharedContext = {
       ...context,
       taskAnalysis: analysis,
-      collaboratingAgents: agents.selectedAgents.map(a => a.constructor.name)
+      collaboratingAgents: agentSelection.selectedAgents,
+      routingStrategy: agentSelection.routingStrategy,
+      conversationStyle: agentSelection.conversationStyle
     };
+
+    // Map agent names to actual agent instances
+    const agentInstances = agentSelection.selectedAgents
+      .map(agentName => this.agents[agentName])
+      .filter(agent => agent); // Filter out any undefined agents
+
+    if (agentInstances.length === 0) {
+      logger.warn('⚠️ No valid agent instances found, falling back to project manager');
+      agentInstances.push(this.agents.projectManager);
+    }
 
     // Execute in parallel with shared context
     const results = await Promise.all(
-      agents.selectedAgents.map(agent => agent.execute(prompt, sharedContext))
+      agentInstances.map(agent => agent.execute(prompt, sharedContext))
     );
 
     // Combine results
