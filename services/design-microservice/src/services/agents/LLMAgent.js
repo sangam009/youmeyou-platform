@@ -136,6 +136,115 @@ function getPromptResponse(model, prompt) {
 }
 
 /**
+ * Stream LLM response progressively - chunks are sent as they are generated
+ */
+async function* getPromptResponseStream(model, prompt, streamingCallback = null) {
+    if (!model) {
+        throw new Error("model is not defined");
+    }
+    if (!prompt) {
+        throw new Error("prompt is empty");
+    }
+    
+    const callId = `llm-stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requestStart = Date.now();
+    
+    try {
+        logger.info('📤 [LLM STREAM] Starting streaming request to Gemini model:', {
+            model: model.model,
+            promptLength: prompt.length,
+            promptPreview: prompt.substring(0, 100) + '...',
+            timestamp: new Date().toISOString(),
+            callId
+        });
+
+        const result = await model.generateContentStream(prompt);
+        let fullResponse = '';
+        let chunkCount = 0;
+        
+        for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            chunkCount++;
+            fullResponse += chunkText;
+            
+            // Send chunk via streaming callback if provided
+            if (streamingCallback) {
+                streamingCallback({
+                    type: 'llm_chunk',
+                    content: chunkText,
+                    fullContent: fullResponse,
+                    chunkNumber: chunkCount,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Yield the chunk for generator consumers
+            yield chunkText;
+        }
+        
+        const requestTime = Date.now() - requestStart;
+        
+        logger.info('📥 [LLM STREAM] Completed streaming response:', {
+            model: model.model,
+            responseLength: fullResponse.length,
+            chunkCount,
+            responsePreview: fullResponse.substring(0, 200) + '...',
+            requestTime: `${requestTime}ms`,
+            timestamp: new Date().toISOString(),
+            callId
+        });
+
+        // Track successful call
+        apiMonitor.trackLLMCall({
+            requestId: callId,
+            model: model.model,
+            promptLength: prompt.length,
+            success: true,
+            responseTime: requestTime
+        });
+
+        // Try to parse as JSON, if it fails return as text
+        let parsedResponse;
+        try {
+            parsedResponse = JSON.parse(fullResponse.replace(/```json|```/g, '').trim());
+            logger.info('✅ [LLM STREAM PARSE] Successfully parsed JSON response');
+        } catch (parseError) {
+            logger.warn('⚠️ [LLM STREAM PARSE] Response is not valid JSON, returning as text');
+            parsedResponse = fullResponse;
+        }
+
+        return {
+            "promptResponse": parsedResponse,
+            "fullResponse": fullResponse,
+            "chunkCount": chunkCount
+        };
+
+    } catch (error) {
+        const requestTime = Date.now() - requestStart;
+        
+        logger.error('❌ [LLM STREAM ERROR] Error in streaming response:', {
+            error: error.message,
+            model: model.model,
+            timestamp: new Date().toISOString(),
+            callId,
+            requestTime: `${requestTime}ms`
+        });
+
+        // Track failed call
+        apiMonitor.trackLLMCall({
+            requestId: callId,
+            model: model.model,
+            promptLength: prompt.length,
+            success: false,
+            error: error.message,
+            responseTime: requestTime
+        });
+
+        throw error;
+    }
+}
+
+/**
  * LLM Agent with optimized request handling
  */
 export class LLMAgent {
@@ -601,8 +710,14 @@ export class LLMAgent {
         taskLength: task.length,
         taskPreview: task.substring(0, 200) + '...',
         contextKeys: Object.keys(context),
-        model: this.model.model
+        model: this.model.model,
+        streamingEnabled: context.streamingEnabled || false
       });
+
+      // Check if streaming is enabled
+      if (context.streamingEnabled && context.streamingCallback) {
+        return await this.collaborateWithAgentStreaming(agentName, task, context);
+      }
 
       const result = await this.rateLimitedRequest(async () => {
         return await getPromptResponse(this.model, task);
@@ -644,6 +759,92 @@ export class LLMAgent {
       
     } catch (error) {
       logger.error(`❌ [LLM COLLAB] Error collaborating with ${agentName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Collaborate with specialized agents using streaming
+   */
+  async collaborateWithAgentStreaming(agentName, task, context = {}) {
+    try {
+      logger.info(`🌊 [LLM STREAM COLLAB] Starting streaming collaboration with ${agentName}:`, {
+        taskLength: task.length,
+        taskPreview: task.substring(0, 200) + '...',
+        model: this.model.model
+      });
+
+      let fullResponse = '';
+      let chunkCount = 0;
+      
+      // Create streaming callback that forwards chunks to the frontend
+      const streamingCallback = (chunkData) => {
+        chunkCount++;
+        fullResponse += chunkData.content;
+        
+        // Send progressive content to frontend
+        if (context.streamingCallback) {
+          context.streamingCallback({
+            type: 'message',
+            agent: agentName,
+            content: chunkData.content,
+            fullContent: fullResponse,
+            chunkNumber: chunkCount,
+            status: `Generating response... (${chunkCount} chunks)`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      };
+
+      // Use rate-limited streaming request
+      const result = await this.rateLimitedRequest(async () => {
+        const streamGenerator = getPromptResponseStream(this.model, task, streamingCallback);
+        
+        // Consume the stream to get the full response
+        for await (const chunk of streamGenerator) {
+          // The streaming callback already handles each chunk
+          // This loop just consumes the generator
+        }
+        
+        // Return the final result
+        return {
+          promptResponse: fullResponse,
+          fullResponse: fullResponse,
+          chunkCount: chunkCount
+        };
+      });
+
+      const responseText = result.fullResponse || result.promptResponse || fullResponse;
+      
+      logger.info(`✅ [LLM STREAM COLLAB] Streaming collaboration complete for ${agentName}:`, {
+        responseLength: responseText.length,
+        chunkCount: chunkCount,
+        responsePreview: responseText.substring(0, 200) + '...'
+      });
+      
+      // Store conversation for context
+      this.storeConversation(agentName, task, responseText);
+      
+      const collaborationResult = {
+        agentCollaboration: agentName,
+        response: responseText,
+        analysis: this.analyzeResponse(responseText, agentName),
+        nextSteps: this.generateNextSteps(responseText, agentName),
+        metadata: {
+          collaboratingAgent: agentName,
+          model: this.model.model,
+          timestamp: new Date().toISOString(),
+          responseLength: responseText.length,
+          chunkCount: chunkCount,
+          callCount: RATE_LIMIT.totalCalls,
+          streamingEnabled: true
+        }
+      };
+
+      return collaborationResult;
+      
+    } catch (error) {
+      logger.error(`❌ [LLM STREAM COLLAB] Error in streaming collaboration with ${agentName}:`, error);
       throw error;
     }
   }
