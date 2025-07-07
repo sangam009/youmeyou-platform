@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from '../../utils/logger.js';
 import { apiMonitor } from '../../utils/apiMonitor.js';
-import { GEMINI_MODEL } from '../../config/index.js';
 
 // Constants
 const GEMINI_MODEL = 'gemini-1.5-flash';
@@ -246,7 +245,7 @@ async function* getPromptResponseStream(model, prompt, streamingCallback = null)
 }
 
 /**
- * LLM Agent with optimized request handling and extensive logging
+ * LLM Agent with optimized request handling
  */
 export class LLMAgent {
   static instance = null;
@@ -262,26 +261,11 @@ export class LLMAgent {
       return LLMAgent.instance;
     }
 
-    // Initialize metrics
-    this.metrics = {
-      totalRequests: 0,
-      successfulRequests: 0,
-      failedRequests: 0,
-      totalTokens: 0,
-      averageResponseTime: 0,
-      lastResponseTime: 0,
-      requestsInLastMinute: 0,
-      lastMinuteTimestamp: Date.now()
-    };
-
     // Initialize immediately in constructor
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
     
     if (!apiKey) {
-      logger.warn('⚠️ No Gemini API key found (GEMINI_API_KEY), LLM will run in mock mode', {
-        mode: 'mock',
-        reason: 'missing_api_key'
-      });
+      logger.warn('⚠️ No Gemini API key found (GEMINI_API_KEY), LLM will run in mock mode');
       this.apiKeyMissing = true;
       this.model = null;
       this.initialized = false;
@@ -291,18 +275,9 @@ export class LLMAgent {
         this.model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
         this.initialized = true;
         this.apiKeyMissing = false;
-        logger.info(`🤖 LLMAgent initialized with ${GEMINI_MODEL}`, {
-          model: GEMINI_MODEL,
-          status: 'initialized',
-          timestamp: new Date().toISOString()
-        });
+        logger.info(`🤖 LLMAgent initialized with ${GEMINI_MODEL}`);
       } catch (error) {
-        logger.error('❌ Failed to initialize LLM in constructor:', {
-          error: error.message,
-          stack: error.stack,
-          model: GEMINI_MODEL,
-          status: 'failed'
-        });
+        logger.error('❌ Failed to initialize LLM in constructor:', error);
         this.model = null;
         this.initialized = false;
         this.apiKeyMissing = true;
@@ -391,242 +366,87 @@ export class LLMAgent {
   }
 
   /**
-   * Execute LLM request with enhanced logging and metrics
+   * Execute LLM request with batching and caching
    */
   async execute(prompt, options = {}) {
-    const requestId = `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const startTime = Date.now();
-
-    // Update request metrics
-    this.metrics.totalRequests++;
-    this.updateRequestsPerMinute();
-
-    // Log full prompt
-    logger.info('📝 [LLM PROMPT] Full prompt:', {
-      requestId,
-      prompt: prompt,
-      options: options,
-      timestamp: new Date().toISOString()
-    });
-
-    logger.info('📤 [LLM REQUEST] Starting execution:', {
-      requestId,
-      promptLength: prompt.length,
-      metrics: {
-        totalRequests: this.metrics.totalRequests,
-        requestsInLastMinute: this.metrics.requestsInLastMinute
-      }
-    });
-
     // Check cache first
     const cached = LLMAgent.getCachedResponse(prompt, options);
-    if (cached) {
-      logger.info('🎯 [LLM CACHE] Cache hit:', {
-        requestId,
-        responseTime: '0ms',
-        source: 'cache',
-        fullResponse: cached
-      });
-      return cached;
-    }
+    if (cached) return cached;
 
     // Initialize if needed
     if (!this.initialized) {
       await this.initialize();
     }
 
-    try {
-      // Add request to batch
-      const response = await new Promise((resolve, reject) => {
-        LLMAgent.batchedRequests.push({
-          prompt,
-          options,
-          resolve,
-          reject,
-          requestId,
-          startTime
-        });
-
-        // Set timeout to process batch
-        if (!LLMAgent.batchTimeout) {
-          LLMAgent.batchTimeout = setTimeout(() => this.processBatch(), LLMAgent.BATCH_DELAY);
-        }
+    // Add request to batch
+    return new Promise((resolve, reject) => {
+      LLMAgent.batchedRequests.push({
+        prompt,
+        options,
+        resolve,
+        reject
       });
 
-      const endTime = Date.now();
-      const processingTime = endTime - startTime;
-
-      // Log full response
-      logger.info('📄 [LLM RESPONSE] Full response:', {
-        requestId,
-        fullResponse: response,
-        timestamp: new Date().toISOString()
-      });
-
-      // Update metrics
-      this.metrics.successfulRequests++;
-      this.metrics.lastResponseTime = processingTime;
-      this.updateAverageResponseTime(processingTime);
-
-      // Track successful request
-      apiMonitor.trackLLMCall({
-        requestId,
-        model: GEMINI_MODEL,
-        success: true,
-        responseTime: processingTime,
-        inputTokens: this.estimateTokens(prompt),
-        outputTokens: this.estimateTokens(response.content)
-      });
-
-      logger.info('✅ [LLM RESPONSE] Request completed successfully:', {
-        requestId,
-        processingTime: `${processingTime}ms`,
-        metrics: {
-          successRate: `${((this.metrics.successfulRequests / this.metrics.totalRequests) * 100).toFixed(1)}%`,
-          averageResponseTime: `${this.metrics.averageResponseTime}ms`,
-          requestsInLastMinute: this.metrics.requestsInLastMinute
-        }
-      });
-
-      return response;
-
-    } catch (error) {
-      const endTime = Date.now();
-      const processingTime = endTime - startTime;
-
-      // Update failure metrics
-      this.metrics.failedRequests++;
-
-      // Track failed request
-      apiMonitor.trackLLMCall({
-        requestId,
-        model: GEMINI_MODEL,
-        success: false,
-        responseTime: processingTime,
-        error: error.message,
-        inputTokens: this.estimateTokens(prompt)
-      });
-
-      logger.error('❌ [LLM ERROR] Request failed:', {
-        requestId,
-        error: error.message,
-        stack: error.stack,
-        processingTime: `${processingTime}ms`,
-        metrics: {
-          failureRate: `${((this.metrics.failedRequests / this.metrics.totalRequests) * 100).toFixed(1)}%`,
-          consecutiveFailures: this.getConsecutiveFailures()
-        }
-      });
-
-      throw error;
-    }
+      // Set timeout to process batch
+      if (!LLMAgent.batchTimeout) {
+        LLMAgent.batchTimeout = setTimeout(() => this.processBatch(), LLMAgent.BATCH_DELAY);
+      }
+    });
   }
 
   /**
-   * Process batched requests with logging
+   * Process batched requests
    */
   async processBatch() {
-    const batchId = `batch-${Date.now()}`;
-    const batchSize = LLMAgent.batchedRequests.length;
-    
-    logger.info('📦 [LLM BATCH] Processing request batch:', {
-      batchId,
-      batchSize,
-      oldestRequest: `${Date.now() - LLMAgent.batchedRequests[0].startTime}ms ago`,
-      fullBatchData: LLMAgent.batchedRequests.map(req => ({
-        requestId: req.requestId,
-        prompt: req.prompt,
-        options: req.options
-      }))
-    });
-
-    // Clear timeout
+    const requests = [...LLMAgent.batchedRequests];
+    LLMAgent.batchedRequests = [];
     LLMAgent.batchTimeout = null;
 
-    // Process all requests in batch
-    const requests = LLMAgent.batchedRequests;
-    LLMAgent.batchedRequests = [];
+    try {
+      // Combine similar requests
+      const uniqueRequests = this.deduplicateRequests(requests);
+      
+      // Execute requests in parallel with rate limiting
+      const results = await Promise.all(
+        uniqueRequests.map(request => this.executeSingle(request.prompt, request.options))
+      );
 
-    for (const request of requests) {
-      try {
-        const response = await this.executeSingle(request.prompt, request.options);
-        
-        const processingTime = Date.now() - request.startTime;
-        
-        // Log full response for each batch item
-        logger.info('📄 [LLM BATCH RESPONSE] Individual response:', {
-          requestId: request.requestId,
-          batchId,
-          fullResponse: response,
-          processingTime: `${processingTime}ms`
-        });
+      // Match results back to original requests
+      requests.forEach((request, i) => {
+        const result = results[this.findMatchingResult(request, uniqueRequests)];
+        LLMAgent.cacheResponse(request.prompt, request.options, result);
+        request.resolve(result);
+      });
 
-        request.resolve(response);
-      } catch (error) {
-        logger.error('❌ [LLM BATCH] Request failed:', {
-          requestId: request.requestId,
-          batchId,
-          error: error.message,
-          prompt: request.prompt
-        });
-        request.reject(error);
+    } catch (error) {
+      requests.forEach(request => request.reject(error));
+    }
+  }
+
+  /**
+   * Find matching result index for request
+   */
+  findMatchingResult(request, uniqueRequests) {
+    return uniqueRequests.findIndex(ur => 
+      ur.prompt === request.prompt && 
+      JSON.stringify(ur.options) === JSON.stringify(request.options)
+    );
+  }
+
+  /**
+   * Deduplicate similar requests
+   */
+  deduplicateRequests(requests) {
+    const unique = new Map();
+    
+    requests.forEach(request => {
+      const key = LLMAgent.getCacheKey(request.prompt, request.options);
+      if (!unique.has(key)) {
+        unique.set(key, request);
       }
-    }
-
-    logger.info('✅ [LLM BATCH] Batch processing completed:', {
-      batchId,
-      processedRequests: batchSize,
-      totalProcessingTime: `${Date.now() - requests[0].startTime}ms`
     });
-  }
 
-  /**
-   * Update requests per minute metric
-   */
-  updateRequestsPerMinute() {
-    const now = Date.now();
-    if (now - this.metrics.lastMinuteTimestamp >= 60000) {
-      this.metrics.requestsInLastMinute = 1;
-      this.metrics.lastMinuteTimestamp = now;
-    } else {
-      this.metrics.requestsInLastMinute++;
-    }
-  }
-
-  /**
-   * Update average response time metric
-   */
-  updateAverageResponseTime(newTime) {
-    const alpha = 0.1; // Exponential moving average weight
-    this.metrics.averageResponseTime = 
-      alpha * newTime + (1 - alpha) * this.metrics.averageResponseTime;
-  }
-
-  /**
-   * Get consecutive failures for circuit breaking
-   */
-  getConsecutiveFailures() {
-    return this.metrics.failedRequests - this.lastSuccessfulRequest;
-  }
-
-  /**
-   * Estimate tokens in text
-   */
-  estimateTokens(text) {
-    return Math.ceil(text.length / 4); // Rough estimation
-  }
-
-  /**
-   * Get agent health metrics
-   */
-  getHealthMetrics() {
-    return {
-      ...this.metrics,
-      status: this.initialized ? 'healthy' : 'unhealthy',
-      model: GEMINI_MODEL,
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString()
-    };
+    return Array.from(unique.values());
   }
 
   /**

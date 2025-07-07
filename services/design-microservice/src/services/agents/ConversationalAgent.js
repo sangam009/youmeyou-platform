@@ -20,169 +20,113 @@ export class ConversationalAgent {
    * Main execution method - Natural conversation with LLM until task completion
    */
   async execute(userQuery, context = {}) {
-    const conversationId = `conv-${Date.now()}`;
-    logger.info(`🎯 Starting conversation with ${this.agentName}:`, {
-      conversationId,
-      query: userQuery,
-      agentName: this.agentName,
-      specialization: this.specialization
-    });
-
-    // Initialize conversation state
-    const conversationState = {
-      conversationTurns: 0,
-      completionScore: 0,
-      subTasks: await this.identifySubTasks(userQuery),
-      currentSubTask: null,
-      taskProgress: []
-    };
-
-    logger.info('📋 Initial conversation state:', {
-      conversationId,
-      subTaskCount: conversationState.subTasks.length,
-      subTasks: conversationState.subTasks
-    });
-    
-    // Start natural conversation loop
-    while (conversationState.completionScore < this.completionThreshold && 
-           conversationState.conversationTurns < this.maxConversationTurns) {
+    try {
+      logger.info(`🎯 ${this.agentName} starting natural conversation for task:`, userQuery.substring(0, 100));
       
-      conversationState.conversationTurns++;
-      logger.info(`💬 ${this.agentName} - Starting conversation turn ${conversationState.conversationTurns}:`, {
-        conversationId,
-        turn: conversationState.conversationTurns,
-        completionScore: conversationState.completionScore
-      });
-      
-      // Select next subtask if needed
-      if (!conversationState.currentSubTask && conversationState.subTasks.length > 0) {
-        conversationState.currentSubTask = conversationState.subTasks.shift();
-        logger.info('📌 Selected next subtask:', {
-          conversationId,
-          turn: conversationState.conversationTurns,
-          subtask: conversationState.currentSubTask
-        });
+      // Check if streaming is enabled
+      if (context.streamingEnabled && context.streamingCallback) {
+        return await this.executeWithStreaming(userQuery, context);
       }
-
-      // Generate next prompt based on current progress
-      const nextPrompt = await this.generateNextPrompt(conversationState, context);
-      logger.info('📝 Generated prompt for LLM:', {
-        conversationId,
-        turn: conversationState.conversationTurns,
-        prompt: nextPrompt,
-        context: {
-          currentSubtask: conversationState.currentSubTask,
-          completionScore: conversationState.completionScore,
-          remainingSubtasks: conversationState.subTasks.length
-        }
-      });
       
-      // Converse with LLM
-      let llmResponse;
-      if (conversationState.conversationTurns === 1) {
-        // First conversation
-        logger.info('🤖 Starting initial LLM conversation:', {
-          conversationId,
-          turn: conversationState.conversationTurns,
-          agentName: this.agentName
-        });
+      // Initialize conversation state
+      const conversationState = {
+        originalTask: userQuery,
+        completionScore: 0.0,
+        conversationTurns: 0,
+        taskProgress: [],
+        finalResult: null,
+        subTasks: [],
+        currentSubTask: null
+      };
 
-        llmResponse = await this.llmAgent.collaborateWithAgent(
-          this.agentName,
-          nextPrompt,
+      // Initial task analysis to break into subtasks
+      const taskAnalysis = await this.llmAgent.analyzeTask(userQuery, {
+        ...context,
+        agentName: this.agentName,
+        specialization: this.specialization
+      });
+
+      conversationState.subTasks = taskAnalysis.subTasks || [];
+      
+      // Start natural conversation loop
+      while (conversationState.completionScore < this.completionThreshold && 
+             conversationState.conversationTurns < this.maxConversationTurns) {
+        
+        conversationState.conversationTurns++;
+        logger.info(`💬 ${this.agentName} - Conversation turn ${conversationState.conversationTurns}`);
+        
+        // Select next subtask if needed
+        if (!conversationState.currentSubTask && conversationState.subTasks.length > 0) {
+          conversationState.currentSubTask = conversationState.subTasks.shift();
+        }
+
+        // Generate next prompt based on current progress
+        const nextPrompt = await this.generateNextPrompt(conversationState, context);
+        
+        // Converse with LLM
+        let llmResponse;
+        if (conversationState.conversationTurns === 1) {
+          // First conversation
+          llmResponse = await this.llmAgent.collaborateWithAgent(
+            this.agentName,
+            nextPrompt,
+            context
+          );
+        } else {
+          // Continue conversation with context
+          llmResponse = await this.llmAgent.continueConversation(
+            this.agentName,
+            nextPrompt,
+            { 
+              ...context, 
+              conversationState,
+              previousResponses: conversationState.taskProgress.map(p => p.response)
+            }
+          );
+        }
+
+        // Extract and validate any actions from LLM response
+        const actions = await this.extractActions(llmResponse.response);
+        if (actions.length > 0) {
+          await this.executeActions(actions, context);
+        }
+
+        // Analyze LLM response and update progress
+        const progressAnalysis = await this.analyzeProgress(
+          llmResponse, 
+          conversationState, 
           context
         );
-      } else {
-        // Continue conversation with context
-        logger.info('🔄 Continuing LLM conversation:', {
-          conversationId,
+        
+        // Update conversation state
+        conversationState.completionScore = progressAnalysis.completionScore;
+        conversationState.taskProgress.push({
           turn: conversationState.conversationTurns,
-          agentName: this.agentName,
-          previousTurns: conversationState.taskProgress.length
+          prompt: nextPrompt,
+          response: llmResponse.response,
+          completionScore: progressAnalysis.completionScore,
+          missingElements: progressAnalysis.missingElements,
+          actions: actions,
+          timestamp: new Date().toISOString()
         });
 
-        llmResponse = await this.llmAgent.continueConversation(
-          this.agentName,
-          nextPrompt,
-          { 
-            ...context, 
-            conversationState,
-            previousResponses: conversationState.taskProgress.map(p => p.response)
-          }
-        );
+        // Mark subtask as complete if threshold met
+        if (conversationState.currentSubTask && progressAnalysis.completionScore >= 0.8) {
+          conversationState.currentSubTask.completed = true;
+          conversationState.currentSubTask = null;
+        }
+
+        // Brief pause between turns
+        await this.sleep(500);
       }
 
-      logger.info('📥 Received LLM response:', {
-        conversationId,
-        turn: conversationState.conversationTurns,
-        responseLength: llmResponse.response.length,
-        response: llmResponse.response,
-        analysis: llmResponse.analysis,
-        suggestions: llmResponse.suggestions
-      });
+      // Compile final response
+      return this.compileFinalResponse(conversationState, context);
 
-      // Extract and validate any actions from LLM response
-      const actions = await this.extractActions(llmResponse.response);
-      if (actions.length > 0) {
-        logger.info('🎯 Extracted actions from response:', {
-          conversationId,
-          turn: conversationState.conversationTurns,
-          actionCount: actions.length,
-          actions: actions.map(a => ({
-            type: a.type,
-            description: a.description
-          }))
-        });
-
-        await this.executeActions(actions, context);
-      }
-
-      // Analyze LLM response and update progress
-      const progressAnalysis = await this.analyzeProgress(
-        llmResponse, 
-        conversationState, 
-        context
-      );
-      
-      logger.info('📊 Progress analysis:', {
-        conversationId,
-        turn: conversationState.conversationTurns,
-        completionScore: progressAnalysis.completionScore,
-        missingElements: progressAnalysis.missingElements,
-        nextSteps: progressAnalysis.nextSteps
-      });
-
-      // Update conversation state
-      conversationState.completionScore = progressAnalysis.completionScore;
-      conversationState.taskProgress.push({
-        turn: conversationState.conversationTurns,
-        prompt: nextPrompt,
-        response: llmResponse.response,
-        completionScore: progressAnalysis.completionScore,
-        missingElements: progressAnalysis.missingElements,
-        actions: actions,
-        timestamp: new Date().toISOString()
-      });
+    } catch (error) {
+      logger.error(`❌ ${this.agentName} execution error:`, error);
+      return this.getFallbackResponse(userQuery, error);
     }
-
-    logger.info('✅ Conversation completed:', {
-      conversationId,
-      totalTurns: conversationState.conversationTurns,
-      finalCompletionScore: conversationState.completionScore,
-      taskProgress: conversationState.taskProgress.map(p => ({
-        turn: p.turn,
-        completionScore: p.completionScore,
-        actionCount: p.actions.length,
-        timestamp: p.timestamp
-      }))
-    });
-
-    return {
-      response: conversationState.taskProgress[conversationState.taskProgress.length - 1].response,
-      conversationTurns: conversationState.conversationTurns,
-      completionScore: conversationState.completionScore,
-      taskProgress: conversationState.taskProgress
-    };
   }
 
   /**
