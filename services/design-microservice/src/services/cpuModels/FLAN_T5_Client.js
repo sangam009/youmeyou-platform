@@ -21,30 +21,72 @@ export class FLAN_T5_Client {
    */
   async mergeCanvasElements(newElements, existingState) {
     try {
-      logger.info('🔄 Merging canvas elements with FLAN-T5');
+      logger.info('🔄 [FLAN-T5] Starting canvas element merging:', {
+        newElementsCount: newElements?.nodes?.length || 0,
+        existingElementsCount: existingState?.nodes?.length || 0,
+        endpoint: this.endpoint
+      });
 
       // Prepare prompt for FLAN-T5
       const prompt = this.buildMergePrompt(newElements, existingState);
+      
+      // Log the complete prompt being sent to FLAN-T5
+      logger.info('📝 [FLAN-T5 PROMPT] Complete prompt being sent to FLAN-T5:', {
+        promptLength: prompt.length,
+        fullPrompt: prompt
+      });
 
       // Call FLAN-T5 endpoint
+      const startTime = Date.now();
       const response = await this.client.post('/merge', {
         prompt,
         max_length: 1024,
         temperature: 0.3
       });
+      const responseTime = Date.now() - startTime;
+
+      // Log the complete response from FLAN-T5
+      logger.info('📄 [FLAN-T5 RESPONSE] Complete response from FLAN-T5:', {
+        responseTime: `${responseTime}ms`,
+        responseData: response.data,
+        mergedElementsRaw: response.data.merged_elements
+      });
 
       // Parse and validate merged elements
       const mergedElements = this.parseMergedElements(response.data.merged_elements);
       
+      // Log the parsed merged elements
+      logger.info('🔧 [FLAN-T5 PARSED] Parsed merged elements:', {
+        parsedElements: mergedElements,
+        nodesCount: mergedElements?.nodes?.length || 0,
+        edgesCount: mergedElements?.edges?.length || 0
+      });
+      
       // Validate structure
       if (!this.validateElementStructure(mergedElements)) {
+        logger.error('❌ [FLAN-T5 VALIDATION] Invalid element structure after merging:', {
+          mergedElements,
+          validationFailed: true
+        });
         throw new Error('Invalid element structure after merging');
       }
+
+      logger.info('✅ [FLAN-T5] Canvas element merging completed successfully:', {
+        finalNodesCount: mergedElements.nodes.length,
+        finalEdgesCount: mergedElements.edges.length,
+        processingTime: `${responseTime}ms`
+      });
 
       return mergedElements;
 
     } catch (error) {
-      logger.error('❌ Error merging canvas elements:', error);
+      logger.error('❌ [FLAN-T5] Error merging canvas elements:', {
+        error: error.message,
+        stack: error.stack,
+        endpoint: this.endpoint,
+        newElements,
+        existingState
+      });
       throw error;
     }
   }

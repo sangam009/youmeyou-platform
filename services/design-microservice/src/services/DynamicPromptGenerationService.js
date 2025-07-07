@@ -37,16 +37,27 @@ export class DynamicPromptGenerationService {
   async generatePrompt(promptType, context = {}) {
     const cacheKey = `${promptType}_${JSON.stringify(context)}`;
     
+    logger.info('🎯 [PROMPT GENERATION] Starting dynamic prompt generation:', {
+      promptType,
+      contextKeys: Object.keys(context),
+      flanT5Available: this.flanT5Available,
+      cacheSize: this.promptCache.size
+    });
+    
     // Check cache first
     if (this.promptCache.has(cacheKey)) {
       const cached = this.promptCache.get(cacheKey);
       if (Date.now() - cached.timestamp < this.cacheExpiry) {
-        logger.info('📦 Using cached prompt for:', promptType);
+        logger.info('📦 [PROMPT CACHE] Using cached prompt:', {
+          promptType,
+          promptLength: cached.prompt.length,
+          fullPrompt: cached.prompt
+        });
         return cached.prompt;
       }
     }
 
-    logger.info('🎨 Generating dynamic prompt:', {
+    logger.info('🎨 [PROMPT GENERATION] Generating dynamic prompt:', {
       type: promptType,
       context: Object.keys(context),
       useFlanT5: this.flanT5Available
@@ -58,6 +69,14 @@ export class DynamicPromptGenerationService {
     } else {
       generatedPrompt = await this.generateFallbackPrompt(promptType, context);
     }
+
+    // Log the final generated prompt
+    logger.info('✅ [PROMPT GENERATION] Generated prompt successfully:', {
+      promptType,
+      promptLength: generatedPrompt.length,
+      fullPrompt: generatedPrompt,
+      usedFlanT5: this.flanT5Available
+    });
 
     // Cache the result
     this.promptCache.set(cacheKey, {
@@ -74,6 +93,13 @@ export class DynamicPromptGenerationService {
   async generateWithFlanT5(promptType, context) {
     try {
       const promptInstructions = this.buildPromptInstructions(promptType, context);
+      
+      // Log the complete instructions being sent to FLAN-T5
+      logger.info('📝 [FLAN-T5 PROMPT GENERATION] Instructions being sent to FLAN-T5:', {
+        promptType,
+        endpoint: `${this.gatewayEndpoint}/cpu-models/flan-t5/generate`,
+        instructions: promptInstructions
+      });
       
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/flan-t5/generate`, {
         method: 'POST',
@@ -93,16 +119,23 @@ export class DynamicPromptGenerationService {
 
       const result = await response.json();
       
-      logger.info('✅ Flan-T5 prompt generated:', {
+      // Log the complete response from FLAN-T5
+      logger.info('📄 [FLAN-T5 PROMPT GENERATION] Complete response from FLAN-T5:', {
+        promptType,
+        fullResponse: result,
+        generatedText: result.generated_text
+      });
+      
+      logger.info('✅ [FLAN-T5 PROMPT GENERATION] Flan-T5 prompt generated successfully:', {
         type: promptType,
         promptLength: result.generated_text.length,
-        promptPreview: result.generated_text.substring(0, 100) + '...'
+        fullPrompt: result.generated_text
       });
 
       return result.generated_text;
 
     } catch (error) {
-      logger.error('❌ Flan-T5 prompt generation failed:', error);
+      logger.error('❌ [FLAN-T5 PROMPT GENERATION] Flan-T5 prompt generation failed:', error);
       return this.generateFallbackPrompt(promptType, context);
     }
   }
@@ -224,7 +257,11 @@ export class DynamicPromptGenerationService {
    * Enhanced fallback prompt generation when Flan-T5 is unavailable
    */
   async generateFallbackPrompt(promptType, context) {
-    logger.info('🔄 Using enhanced fallback prompt generation for:', promptType);
+    logger.info('🔄 [FALLBACK PROMPT GENERATION] Using enhanced fallback prompt generation:', {
+      promptType,
+      contextKeys: Object.keys(context),
+      reason: 'FLAN-T5 unavailable or failed'
+    });
 
     const templates = {
       'agent_collaboration': this.generateAgentCollaborationPrompt(context),
@@ -236,7 +273,16 @@ export class DynamicPromptGenerationService {
       'task_enhancement': this.generateTaskEnhancementPrompt(context)
     };
 
-    return templates[promptType] || this.generateGenericPrompt(context);
+    const generatedPrompt = templates[promptType] || this.generateGenericPrompt(context);
+    
+    // Log the generated fallback prompt
+    logger.info('✅ [FALLBACK PROMPT GENERATION] Generated fallback prompt:', {
+      promptType,
+      promptLength: generatedPrompt.length,
+      fullPrompt: generatedPrompt
+    });
+    
+    return generatedPrompt;
   }
 
   /**

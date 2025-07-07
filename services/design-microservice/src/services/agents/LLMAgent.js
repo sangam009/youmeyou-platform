@@ -468,6 +468,12 @@ export class LLMAgent {
         promptPreview: prompt.substring(0, 100) + '...'
       });
 
+      // Log complete prompt for debugging
+      logger.info('📝 [LLM PROMPT] Complete prompt being sent:', {
+        callId: requestId,
+        fullPrompt: prompt
+      });
+
       const startTime = Date.now();
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
@@ -481,6 +487,12 @@ export class LLMAgent {
         requestTime: `${responseTime}ms`,
         responseLength: responseText.length,
         responsePreview: responseText.substring(0, 100) + '...'
+      });
+
+      // Log complete response for debugging
+      logger.info('📄 [LLM RESPONSE] Complete response received:', {
+        callId: requestId,
+        fullResponse: responseText
       });
 
       return {
@@ -717,6 +729,13 @@ export class LLMAgent {
       // Generate dynamic collaboration prompt
       const collaborationPrompt = await this.buildCollaborationPrompt(agentName, task, context);
       
+      // Log the complete collaboration prompt
+      logger.info(`📝 [LLM COLLAB PROMPT] Complete collaboration prompt for ${agentName}:`, {
+        agentName,
+        fullPrompt: collaborationPrompt,
+        promptLength: collaborationPrompt.length
+      });
+      
       // Check if streaming is enabled
       if (context.streamingEnabled && context.streamingCallback) {
         return await this.collaborateWithAgentStreaming(agentName, collaborationPrompt, context);
@@ -733,6 +752,13 @@ export class LLMAgent {
         responseLength: responseText.length,
         responsePreview: responseText.substring(0, 200) + '...',
         responseType: typeof response
+      });
+      
+      // Log complete collaboration response
+      logger.info(`📄 [LLM COLLAB RESPONSE] Complete collaboration response for ${agentName}:`, {
+        agentName,
+        fullResponse: responseText,
+        responseLength: responseText.length
       });
       
       // Store conversation for context
@@ -857,13 +883,30 @@ export class LLMAgent {
    */
   async continueConversation(agentName, newPrompt, context = {}) {
     try {
-      logger.info(`💬 Continuing conversation with ${agentName}`);
+      logger.info(`💬 [LLM CONVERSATION] Continuing conversation with ${agentName}:`, {
+        agentName,
+        newPromptLength: newPrompt.length,
+        newPromptPreview: newPrompt.substring(0, 100) + '...',
+        contextKeys: Object.keys(context)
+      });
       
       // Get conversation history
       const history = this.getConversationHistory(agentName);
+      logger.info(`📚 [LLM CONVERSATION] Retrieved conversation history for ${agentName}:`, {
+        agentName,
+        historyLength: history.length,
+        historyTurns: history.map(h => ({ timestamp: h.timestamp, promptPreview: h.prompt.substring(0, 50) + '...' }))
+      });
       
       // Build context-aware prompt
       const contextPrompt = this.buildContextualPrompt(newPrompt, history, context);
+      
+      // Log the complete contextual prompt
+      logger.info(`📝 [LLM CONVERSATION PROMPT] Complete contextual prompt for ${agentName}:`, {
+        agentName,
+        fullPrompt: contextPrompt,
+        promptLength: contextPrompt.length
+      });
       
       const config = {
         thinkingConfig: {
@@ -890,6 +933,14 @@ export class LLMAgent {
       });
 
       const response = result.promptResponse || result;
+      
+      // Log complete conversation response
+      logger.info(`📄 [LLM CONVERSATION RESPONSE] Complete conversation response for ${agentName}:`, {
+        agentName,
+        fullResponse: response,
+        responseLength: response.length,
+        conversationTurn: history.length + 1
+      });
       
       // Update conversation history
       this.updateConversationHistory(agentName, newPrompt, response);

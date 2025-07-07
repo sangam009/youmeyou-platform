@@ -63,10 +63,19 @@ export class ConversationalAgent {
         // Generate next prompt based on current progress
         const nextPrompt = await this.generateNextPrompt(conversationState, context);
         
+        // Log the generated prompt for this conversation turn
+        logger.info(`📝 [CONVERSATIONAL AGENT] Generated prompt for turn ${conversationState.conversationTurns}:`, {
+          agentName: this.agentName,
+          turn: conversationState.conversationTurns,
+          promptLength: nextPrompt.length,
+          fullPrompt: nextPrompt
+        });
+        
         // Converse with LLM
         let llmResponse;
         if (conversationState.conversationTurns === 1) {
           // First conversation
+          logger.info(`🤝 [CONVERSATIONAL AGENT] Starting first collaboration with LLM for ${this.agentName}`);
           llmResponse = await this.llmAgent.collaborateWithAgent(
             this.agentName,
             nextPrompt,
@@ -74,6 +83,7 @@ export class ConversationalAgent {
           );
         } else {
           // Continue conversation with context
+          logger.info(`💬 [CONVERSATIONAL AGENT] Continuing conversation turn ${conversationState.conversationTurns} for ${this.agentName}`);
           llmResponse = await this.llmAgent.continueConversation(
             this.agentName,
             nextPrompt,
@@ -84,6 +94,14 @@ export class ConversationalAgent {
             }
           );
         }
+        
+        // Log the LLM response for this conversation turn
+        logger.info(`📄 [CONVERSATIONAL AGENT] Received LLM response for turn ${conversationState.conversationTurns}:`, {
+          agentName: this.agentName,
+          turn: conversationState.conversationTurns,
+          responseLength: llmResponse.response?.length || 0,
+          fullResponse: llmResponse.response || llmResponse.content || 'No response content'
+        });
 
         // Extract and validate any actions from LLM response
         const actions = await this.extractActions(llmResponse.response);
@@ -174,6 +192,14 @@ export class ConversationalAgent {
         // Generate next prompt based on current progress
         const nextPrompt = await this.generateNextPrompt(conversationState, context);
         
+        // Log the generated prompt for this streaming conversation turn
+        logger.info(`📝 [CONVERSATIONAL AGENT STREAMING] Generated prompt for turn ${conversationState.conversationTurns}:`, {
+          agentName: this.agentName,
+          turn: conversationState.conversationTurns,
+          promptLength: nextPrompt.length,
+          fullPrompt: nextPrompt
+        });
+        
         // Stream LLM collaboration start
         this.streamProgress({
           type: 'llm_collaboration',
@@ -187,6 +213,7 @@ export class ConversationalAgent {
         let llmResponse;
         if (conversationState.conversationTurns === 1) {
           // First conversation
+          logger.info(`🤝 [CONVERSATIONAL AGENT STREAMING] Starting first collaboration with LLM for ${this.agentName}`);
           llmResponse = await this.llmAgent.collaborateWithAgent(
             this.agentName,
             nextPrompt,
@@ -194,12 +221,21 @@ export class ConversationalAgent {
           );
         } else {
           // Continue conversation
+          logger.info(`💬 [CONVERSATIONAL AGENT STREAMING] Continuing conversation turn ${conversationState.conversationTurns} for ${this.agentName}`);
           llmResponse = await this.llmAgent.continueConversation(
             this.agentName,
             nextPrompt,
             { ...context, conversationState }
           );
         }
+        
+        // Log the LLM response for this streaming conversation turn
+        logger.info(`📄 [CONVERSATIONAL AGENT STREAMING] Received LLM response for turn ${conversationState.conversationTurns}:`, {
+          agentName: this.agentName,
+          turn: conversationState.conversationTurns,
+          responseLength: llmResponse.response?.length || 0,
+          fullResponse: llmResponse.response || llmResponse.content || 'No response content'
+        });
 
         // Stream LLM response received
         this.streamProgress({

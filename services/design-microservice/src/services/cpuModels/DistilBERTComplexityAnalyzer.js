@@ -93,6 +93,13 @@ export class DistilBERTComplexityAnalyzer {
         }
       });
       
+      // Log the complete prompt being sent to DistilBERT
+      logger.info('📝 [DISTILBERT PROMPT] Complete prompt being sent to DistilBERT:', {
+        requestId,
+        fullPrompt: prompt,
+        promptLength: prompt.length
+      });
+      
       const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/classify`, {
         method: 'POST',
@@ -111,6 +118,13 @@ export class DistilBERTComplexityAnalyzer {
       }
 
       const result = await response.json();
+      
+      // Log the complete response from DistilBERT
+      logger.info('📄 [DISTILBERT RESPONSE] Complete response from DistilBERT:', {
+        requestId,
+        fullResponse: result,
+        responseTime: `${requestTime}ms`
+      });
       this.successCount++;
       
       // Track successful call
@@ -220,6 +234,13 @@ export class DistilBERTComplexityAnalyzer {
         endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/intent`
       });
 
+      // Log the complete prompt being sent for intent classification
+      logger.info('📝 [DISTILBERT INTENT PROMPT] Complete prompt being sent for intent classification:', {
+        requestId,
+        fullPrompt: prompt,
+        promptLength: prompt.length
+      });
+
       const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/intent`, {
         method: 'POST',
@@ -239,6 +260,13 @@ export class DistilBERTComplexityAnalyzer {
       }
 
       const result = await response.json();
+      
+      // Log the complete response from DistilBERT intent classification
+      logger.info('📄 [DISTILBERT INTENT RESPONSE] Complete response from DistilBERT intent classification:', {
+        requestId,
+        fullResponse: result,
+        responseTime: `${requestTime}ms`
+      });
       this.successCount++;
       
       logger.info('✅ [CPU RESPONSE] Intent classification completed successfully:', {
