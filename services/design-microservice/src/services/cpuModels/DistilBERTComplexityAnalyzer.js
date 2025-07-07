@@ -13,66 +13,100 @@ export class DistilBERTComplexityAnalyzer {
     this.requestCount = 0;
     this.successCount = 0;
     this.fallbackCount = 0;
+    this.lastRequestTime = null;
+    this.lastSuccessCount = 0;
+    this.metrics = {
+      totalTokensProcessed: 0,
+      averageProcessingTime: 0,
+      requestsInLastMinute: 0,
+      lastMinuteTimestamp: Date.now()
+    };
     
     logger.info('🧠 DistilBERTComplexityAnalyzer connecting to existing CPU models gateway:', {
-      endpoint: this.gatewayEndpoint
+      endpoint: this.gatewayEndpoint,
+      status: 'initializing',
+      timestamp: new Date().toISOString()
     });
     this.initializeModel();
   }
 
   async initializeModel() {
     try {
-      logger.info('🔍 Checking CPU models gateway availability...');
+      logger.info('🔍 Checking CPU models gateway availability...', {
+        endpoint: this.gatewayEndpoint,
+        timestamp: new Date().toISOString()
+      });
       
       // Check if the CPU models gateway is available
       const response = await fetch(`${this.gatewayEndpoint}/health`);
       if (response.ok) {
+        const status = await response.json();
         this.isInitialized = true;
         logger.info('✅ CPU models gateway connected successfully:', {
           endpoint: this.gatewayEndpoint,
-          status: response.status
+          status: response.status,
+          modelStatus: status.models || {},
+          timestamp: new Date().toISOString()
         });
       } else {
         logger.warn('⚠️ CPU models gateway not available, will use fallback:', {
           endpoint: this.gatewayEndpoint,
-          status: response.status
+          status: response.status,
+          timestamp: new Date().toISOString()
         });
       }
     } catch (error) {
       logger.warn('⚠️ CPU models gateway not reachable, using fallback analysis:', {
         endpoint: this.gatewayEndpoint,
-        error: error.message
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
     }
   }
 
   /**
-   * Analyze prompt complexity using DistilBERT model
+   * Analyze prompt complexity using DistilBERT model with enhanced logging
    */
   async analyzeComplexity(prompt) {
     this.requestCount++;
-    const requestId = `cpu-complexity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.updateRequestsPerMinute();
+    const requestId = `distilbert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
     
-    logger.info('🧠 [CPU REQUEST] Starting complexity analysis:', {
+    // Log full prompt
+    logger.info('📝 [DISTILBERT PROMPT] Full prompt:', {
+      requestId,
+      prompt: prompt,
+      timestamp: new Date().toISOString()
+    });
+    
+    logger.info('🧠 [DISTILBERT REQUEST] Starting complexity analysis:', {
       requestId,
       requestCount: this.requestCount,
       promptLength: prompt.length,
-      promptPreview: prompt.substring(0, 100) + '...',
       isInitialized: this.isInitialized,
       endpoint: this.gatewayEndpoint,
+      metrics: {
+        totalRequests: this.requestCount,
+        successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+        requestsInLastMinute: this.metrics.requestsInLastMinute
+      },
       timestamp: new Date().toISOString()
     });
 
     if (!this.isInitialized) {
-      logger.warn('⚠️ [CPU BYPASS] CPU model not initialized, using fallback analysis', {
+      logger.warn('⚠️ [DISTILBERT BYPASS] CPU model not initialized, using fallback analysis', {
         requestId,
-        reason: 'not_initialized'
+        reason: 'not_initialized',
+        fallbackCount: this.fallbackCount + 1
       });
       this.fallbackCount++;
       
       // Track fallback call
       apiMonitor.trackCPUCall({
         requestId,
+        model: 'distilbert',
         endpoint: this.gatewayEndpoint,
         requestType: 'complexity_analysis',
         success: false,
@@ -84,45 +118,63 @@ export class DistilBERTComplexityAnalyzer {
     }
 
     try {
-      logger.info('🧠 [CPU REQUEST] Analyzing complexity with DistilBERT CPU model:', {
+      logger.info('🧠 [DISTILBERT REQUEST] Analyzing complexity with DistilBERT CPU model:', {
         requestId,
         endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
         requestPayload: {
-          textLength: prompt.length,
-          textPreview: prompt.substring(0, 100) + '...'
+          text: prompt,
+          requestId,
+          timestamp: new Date().toISOString()
         }
       });
       
-      const requestStart = Date.now();
       const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/classify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: prompt
+          text: prompt,
+          requestId,
+          timestamp: new Date().toISOString()
         })
       });
 
-      const requestTime = Date.now() - requestStart;
+      const requestTime = Date.now() - startTime;
+      this.lastRequestTime = requestTime;
+      this.updateAverageProcessingTime(requestTime);
 
       if (!response.ok) {
         throw new Error(`DistilBERT service error: ${response.status}`);
       }
 
       const result = await response.json();
+      
+      // Log full response
+      logger.info('📄 [DISTILBERT RESPONSE] Full response:', {
+        requestId,
+        fullResponse: result,
+        timestamp: new Date().toISOString()
+      });
+
       this.successCount++;
+      this.lastSuccessCount = this.successCount;
       
       // Track successful call
       apiMonitor.trackCPUCall({
         requestId,
+        model: 'distilbert',
         endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
         requestType: 'complexity_analysis',
         success: true,
-        responseTime: requestTime
+        responseTime: requestTime,
+        inputTokens: result.estimated_tokens || Math.ceil(prompt.length / 4)
       });
       
-      logger.info('✅ [CPU RESPONSE] CPU model analysis completed successfully:', {
+      // Update metrics
+      this.metrics.totalTokensProcessed += (result.estimated_tokens || 0);
+      
+      logger.info('✅ [DISTILBERT RESPONSE] CPU model analysis completed successfully:', {
         requestId,
         requestTime: `${requestTime}ms`,
         responseData: {
@@ -133,11 +185,13 @@ export class DistilBERTComplexityAnalyzer {
           estimatedTokens: result.estimated_tokens,
           processingTime: result.processing_time
         },
-        statistics: {
+        metrics: {
           totalRequests: this.requestCount,
           successCount: this.successCount,
-          fallbackCount: this.fallbackCount,
-          successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`
+          failureCount: this.fallbackCount,
+          successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+          averageProcessingTime: `${this.metrics.averageProcessingTime}ms`,
+          totalTokensProcessed: this.metrics.totalTokensProcessed
         }
       });
       
@@ -146,30 +200,32 @@ export class DistilBERTComplexityAnalyzer {
         confidence: result.confidence || 0.5,
         categories: result.categories || [],
         technicalDomains: result.technical_domains || [],
-        estimatedTokens: result.estimated_tokens || 100,
+        estimatedTokens: result.estimated_tokens || Math.ceil(prompt.length / 4),
         processingTime: result.processing_time || 0,
         source: 'distilbert-cpu-model',
         requestTime,
         requestId,
         metadata: {
           endpoint: this.gatewayEndpoint,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          metrics: {
+            totalRequests: this.requestCount,
+            successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+            averageProcessingTime: this.metrics.averageProcessingTime
+          }
         }
       };
 
-      // Add agent recommendations if this is an agent selection prompt
-      if (prompt.includes('specialized agents are needed')) {
-        analysis.recommendedAgents = await this.recommendAgents(prompt, analysis);
-      }
-      
       return analysis;
 
     } catch (error) {
-      const requestTime = Date.now() - requestStart;
+      const requestTime = Date.now() - startTime;
+      this.fallbackCount++;
       
       // Track failed call
       apiMonitor.trackCPUCall({
         requestId,
+        model: 'distilbert',
         endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
         requestType: 'complexity_analysis',
         success: false,
@@ -178,16 +234,67 @@ export class DistilBERTComplexityAnalyzer {
         fallback: true
       });
       
-      logger.error('❌ [CPU ERROR] DistilBERT complexity analysis failed:', {
+      logger.error('❌ [DISTILBERT ERROR] Complexity analysis failed:', {
         requestId,
         error: error.message,
+        stack: error.stack,
         endpoint: this.gatewayEndpoint,
-        fallbackCount: this.fallbackCount + 1,
-        requestTime: `${requestTime}ms`
+        fallbackCount: this.fallbackCount,
+        requestTime: `${requestTime}ms`,
+        metrics: {
+          failureRate: `${((this.fallbackCount / this.requestCount) * 100).toFixed(1)}%`,
+          consecutiveFailures: this.getConsecutiveFailures()
+        }
       });
-      this.fallbackCount++;
+
       return this.fallbackComplexityAnalysis(prompt, requestId);
     }
+  }
+
+  /**
+   * Update requests per minute metric
+   */
+  updateRequestsPerMinute() {
+    const now = Date.now();
+    if (now - this.metrics.lastMinuteTimestamp >= 60000) {
+      this.metrics.requestsInLastMinute = 1;
+      this.metrics.lastMinuteTimestamp = now;
+    } else {
+      this.metrics.requestsInLastMinute++;
+    }
+  }
+
+  /**
+   * Update average processing time metric
+   */
+  updateAverageProcessingTime(newTime) {
+    const alpha = 0.1; // Exponential moving average weight
+    this.metrics.averageProcessingTime = 
+      alpha * newTime + (1 - alpha) * (this.metrics.averageProcessingTime || newTime);
+  }
+
+  /**
+   * Get consecutive failures for circuit breaking
+   */
+  getConsecutiveFailures() {
+    return this.fallbackCount - (this.successCount - this.lastSuccessCount);
+  }
+
+  /**
+   * Get analyzer health metrics
+   */
+  getHealthMetrics() {
+    return {
+      ...this.metrics,
+      totalRequests: this.requestCount,
+      successCount: this.successCount,
+      failureCount: this.fallbackCount,
+      successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+      lastRequestTime: this.lastRequestTime,
+      status: this.isInitialized ? 'healthy' : 'unhealthy',
+      endpoint: this.gatewayEndpoint,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**

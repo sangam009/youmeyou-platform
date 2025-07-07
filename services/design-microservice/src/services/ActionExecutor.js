@@ -68,14 +68,30 @@ export class ActionExecutor {
   async handleCanvasUpdate(userId, projectId, payload, context) {
     try {
       const { canvasId, updates, description } = payload;
+      const actionId = `canvas-${Date.now()}`;
       
-      logger.info(`🎨 Updating canvas ${canvasId} for project ${projectId}`);
+      logger.info(`🎨 Starting canvas update:`, {
+        actionId,
+        userId,
+        projectId,
+        canvasId,
+        updateType: updates.type,
+        description
+      });
 
       // Get current canvas state
       const currentCanvas = await canvasService.getCanvas(canvasId);
       if (!currentCanvas) {
         throw new Error(`Canvas ${canvasId} not found`);
       }
+
+      logger.info('📊 Current canvas state:', {
+        actionId,
+        canvasId,
+        elements: currentCanvas.elements,
+        lastModified: currentCanvas.lastModified,
+        modifiedBy: currentCanvas.modifiedBy
+      });
 
       // Apply updates
       const updatedCanvas = await canvasService.updateCanvas(canvasId, {
@@ -85,12 +101,35 @@ export class ActionExecutor {
         modifiedBy: userId
       });
 
+      logger.info('📊 Updated canvas state:', {
+        actionId,
+        canvasId,
+        elements: updatedCanvas.elements,
+        changes: {
+          addedElements: Object.keys(updatedCanvas.elements || {}).filter(id => !currentCanvas.elements?.[id]),
+          modifiedElements: Object.keys(updatedCanvas.elements || {}).filter(id => 
+            currentCanvas.elements?.[id] && 
+            JSON.stringify(currentCanvas.elements[id]) !== JSON.stringify(updatedCanvas.elements[id])
+          ),
+          removedElements: Object.keys(currentCanvas.elements || {}).filter(id => !updatedCanvas.elements?.[id])
+        },
+        lastModified: updatedCanvas.lastModified,
+        modifiedBy: updatedCanvas.modifiedBy
+      });
+
       // Store canvas action in vector DB
       await vectorDB.storeCanvasAction(userId, projectId, {
         actionType: 'update_canvas',
         canvasState: updatedCanvas,
         description: description || 'Canvas updated by agent',
         agentName: context.agentName || 'unknown',
+        timestamp: new Date().toISOString()
+      });
+
+      logger.info('✅ Canvas update completed:', {
+        actionId,
+        canvasId,
+        updateType: updates.type,
         timestamp: new Date().toISOString()
       });
 

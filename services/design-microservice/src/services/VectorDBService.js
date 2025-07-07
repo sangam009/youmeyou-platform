@@ -317,14 +317,34 @@ export class VectorDBService {
         where.$and.push({ projectId: { $eq: projectId } });
       }
 
+      logger.info('🔍 Querying VectorDB for conversation context:', {
+        userId,
+        projectId,
+        limit,
+        where: JSON.stringify(where)
+      });
+
       const results = await this.collections.conversations.query({
         queryTexts: ['recent conversation context'],
         nResults: limit,
         where
       });
 
-      logger.info(`📚 Retrieved conversation context for user ${userId}${projectId ? ` and project ${projectId}` : ''}`);
-      return results.metadatas[0] || [];
+      const metadatas = results.metadatas[0] || [];
+      
+      logger.info('📚 Retrieved conversation context:', {
+        turnCount: metadatas.length,
+        turns: metadatas.map(m => ({
+          turnNumber: m.turnNumber,
+          timestamp: m.timestamp,
+          agentName: m.agentName,
+          userMessagePreview: m.userMessage?.substring(0, 50) + '...',
+          agentResponsePreview: m.agentResponse?.substring(0, 50) + '...',
+          hasContext: !!m.context
+        }))
+      });
+
+      return metadatas;
     } catch (error) {
       logger.error('❌ Error getting conversation context:', error);
       return [];
@@ -378,13 +398,34 @@ export class VectorDBService {
         where.$and.push({ codeType: { $eq: codeType } });
       }
 
+      logger.info('🔍 Querying VectorDB for code history:', {
+        userId,
+        projectId,
+        codeType,
+        limit,
+        where: JSON.stringify(where)
+      });
+
       const results = await this.collections.codeHistory.query({
         queryTexts: ['code generation'],
         nResults: limit,
         where
       });
 
-      return results.metadatas[0] || [];
+      const metadatas = results.metadatas[0] || [];
+
+      logger.info('💻 Retrieved code history:', {
+        actionCount: metadatas.length,
+        actions: metadatas.map(m => ({
+          codeType: m.codeType,
+          timestamp: m.timestamp,
+          agentName: m.agentName,
+          description: m.description,
+          codePreview: m.code?.substring(0, 50) + '...'
+        }))
+      });
+
+      return metadatas;
     } catch (error) {
       logger.error('❌ Error getting code history:', error);
       return [];
@@ -410,13 +451,34 @@ export class VectorDBService {
         where.$and.push({ agentName: { $eq: agentName } });
       }
 
+      logger.info('🔍 Querying VectorDB for agent actions:', {
+        userId,
+        projectId,
+        agentName,
+        limit,
+        where: JSON.stringify(where)
+      });
+
       const results = await this.collections.agentActions.query({
         queryTexts: ['agent decisions'],
         nResults: limit,
         where
       });
 
-      return results.metadatas[0] || [];
+      const metadatas = results.metadatas[0] || [];
+
+      logger.info('🤖 Retrieved agent actions:', {
+        actionCount: metadatas.length,
+        actions: metadatas.map(m => ({
+          agentName: m.agentName,
+          action: m.action,
+          decision: m.decision,
+          timestamp: m.timestamp,
+          reasoningPreview: m.reasoning?.substring(0, 50) + '...'
+        }))
+      });
+
+      return metadatas;
     } catch (error) {
       logger.error('❌ Error getting agent actions:', error);
       return [];

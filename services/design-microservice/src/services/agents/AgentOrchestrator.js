@@ -19,6 +19,7 @@ export class AgentOrchestrator {
   static instance = null;
   static ANALYSIS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
   static analysisCache = new Map();
+  static ANALYSIS_THRESHOLD = 0.8;
 
   constructor() {
     if (AgentOrchestrator.instance) {
@@ -31,6 +32,12 @@ export class AgentOrchestrator {
     this.architectureDesigner = new ArchitectureDesignerAgent();
     this.casualConversation = new CasualConversationAgent();
     
+    // Initialize all agents
+    this.databaseDesigner = new DatabaseDesignerAgent();
+    this.apiDesigner = new APIDesignerAgent();
+    this.codeGenerator = new CodeGeneratorAgent();
+    this.techLead = new TechLeadAgent();
+
     // Initialize core agents only
     this.agents = {
       projectManager: this.projectManager,
@@ -39,6 +46,7 @@ export class AgentOrchestrator {
     };
 
     AgentOrchestrator.instance = this;
+    logger.info('🎯 AgentOrchestrator initialized with all agents');
   }
 
   static getInstance() {
@@ -182,6 +190,7 @@ export class AgentOrchestrator {
 
     // For casual conversations, use the dedicated agent
     if (primaryIntent === 'casual_conversation') {
+      logger.info('👋 Selected CasualConversationAgent for casual chat');
       return this.casualConversation;
     }
 

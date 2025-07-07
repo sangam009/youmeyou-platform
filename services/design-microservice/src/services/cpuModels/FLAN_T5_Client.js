@@ -1,6 +1,7 @@
 import logger from '../../utils/logger.js';
 import axios from 'axios';
 import { config } from '../../config/index.js';
+import { apiMonitor } from '../../utils/apiMonitor.js';
 
 /**
  * FLAN-T5 Client for Canvas Element Merging
@@ -13,7 +14,135 @@ export class FLAN_T5_Client {
       baseURL: this.endpoint,
       timeout: 30000
     });
-    logger.info('🤖 FLAN-T5 Client initialized');
+    this.requestCount = 0;
+    this.successCount = 0;
+    this.failureCount = 0;
+    this.lastRequestTime = null;
+    
+    logger.info('🤖 FLAN-T5 Client initialized:', {
+      endpoint: this.endpoint,
+      timeout: 30000,
+      status: 'ready'
+    });
+  }
+
+  /**
+   * Send request to FLAN-T5 model with enhanced logging
+   */
+  async sendRequest(endpoint, data) {
+    this.requestCount++;
+    const requestId = `flant5-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
+
+    // Log full prompt/data
+    logger.info('📝 [FLAN-T5 PROMPT] Full request data:', {
+      requestId,
+      endpoint,
+      fullData: data,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.info('📤 [FLAN-T5 REQUEST] Sending request:', {
+      requestId,
+      endpoint,
+      requestCount: this.requestCount,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const response = await this.client.post(endpoint, data);
+      const endTime = Date.now();
+      const processingTime = endTime - startTime;
+      this.successCount++;
+      this.lastRequestTime = processingTime;
+
+      // Log full response
+      logger.info('�� [FLAN-T5 RESPONSE] Full response data:', {
+        requestId,
+        fullResponse: response.data,
+        timestamp: new Date().toISOString()
+      });
+
+      // Track successful API call
+      apiMonitor.trackCPUCall({
+        requestId,
+        model: 'flan-t5',
+        endpoint,
+        success: true,
+        responseTime: processingTime,
+        inputSize: JSON.stringify(data).length,
+        outputSize: JSON.stringify(response.data).length
+      });
+
+      logger.info('✅ [FLAN-T5 RESPONSE] Request successful:', {
+        requestId,
+        processingTime: `${processingTime}ms`,
+        status: response.status,
+        statistics: {
+          totalRequests: this.requestCount,
+          successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+          averageTime: this.lastRequestTime
+        }
+      });
+
+      return response.data;
+
+    } catch (error) {
+      const endTime = Date.now();
+      const processingTime = endTime - startTime;
+      this.failureCount++;
+
+      // Track failed API call
+      apiMonitor.trackCPUCall({
+        requestId,
+        model: 'flan-t5',
+        endpoint,
+        success: false,
+        responseTime: processingTime,
+        error: error.message,
+        inputSize: JSON.stringify(data).length
+      });
+
+      logger.error('❌ [FLAN-T5 ERROR] Request failed:', {
+        requestId,
+        endpoint,
+        error: error.message,
+        processingTime: `${processingTime}ms`,
+        requestData: {
+          inputPreview: JSON.stringify(data).substring(0, 100) + '...'
+        },
+        statistics: {
+          totalRequests: this.requestCount,
+          failureRate: `${((this.failureCount / this.requestCount) * 100).toFixed(1)}%`,
+          consecutiveFailures: this.getConsecutiveFailures()
+        }
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Track consecutive failures for circuit breaking
+   */
+  getConsecutiveFailures() {
+    return this.failureCount - this.lastSuccessCount;
+  }
+
+  /**
+   * Get client health metrics
+   */
+  getHealthMetrics() {
+    return {
+      totalRequests: this.requestCount,
+      successCount: this.successCount,
+      failureCount: this.failureCount,
+      successRate: `${((this.successCount / this.requestCount) * 100).toFixed(1)}%`,
+      lastRequestTime: this.lastRequestTime,
+      averageResponseTime: this.lastRequestTime, // Implement rolling average in future
+      endpoint: this.endpoint,
+      status: this.failureCount > 5 ? 'degraded' : 'healthy'
+    };
   }
 
   /**
@@ -21,10 +150,26 @@ export class FLAN_T5_Client {
    */
   async mergeCanvasElements(newElements, existingState) {
     try {
-      logger.info('🔄 Merging canvas elements with FLAN-T5');
+      const requestId = `merge-${Date.now()}`;
+      logger.info('🔄 Starting canvas merge operation:', {
+        requestId,
+        existingElementCount: Object.keys(existingState).length,
+        newElementCount: Object.keys(newElements).length
+      });
+
+      logger.info('📊 Pre-merge state:', {
+        requestId,
+        existingState: JSON.stringify(existingState, null, 2),
+        newElements: JSON.stringify(newElements, null, 2)
+      });
 
       // Prepare prompt for FLAN-T5
       const prompt = this.buildMergePrompt(newElements, existingState);
+
+      logger.info('📝 Merge prompt:', {
+        requestId,
+        prompt
+      });
 
       // Call FLAN-T5 endpoint
       const response = await this.client.post('/merge', {
@@ -40,6 +185,19 @@ export class FLAN_T5_Client {
       if (!this.validateElementStructure(mergedElements)) {
         throw new Error('Invalid element structure after merging');
       }
+
+      logger.info('✅ Merge completed:', {
+        requestId,
+        mergedElementCount: Object.keys(mergedElements).length,
+        addedElements: Object.keys(mergedElements).filter(id => !existingState[id]),
+        updatedElements: Object.keys(mergedElements).filter(id => existingState[id] && JSON.stringify(existingState[id]) !== JSON.stringify(mergedElements[id])),
+        removedElements: Object.keys(existingState).filter(id => !mergedElements[id])
+      });
+
+      logger.info('📊 Post-merge state:', {
+        requestId,
+        mergedElements: JSON.stringify(mergedElements, null, 2)
+      });
 
       return mergedElements;
 
