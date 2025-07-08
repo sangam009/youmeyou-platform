@@ -103,10 +103,10 @@ The generated prompt should:
 
 Please generate a prompt that fulfills these requirements while being dynamic and contextually relevant.`;
 
-      const response = await this.llmAgent.execute([
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: userMessage }
-      ]);
+      // Combine messages into a single prompt string for Gemini
+      const fullPrompt = `${systemMessage}\n\n${userMessage}`;
+
+      const response = await this.llmAgent.execute(fullPrompt);
 
       if (!response || !response.content) {
         throw new Error('Failed to generate prompt with Gemini');
