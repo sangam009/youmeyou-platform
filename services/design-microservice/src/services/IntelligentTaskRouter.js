@@ -97,16 +97,17 @@ export class IntelligentTaskRouter {
           const llmAgent = LLMAgent.getInstance();
           
           // Generate dynamic enhancement prompt using CPU models
-        const { DynamicPromptGenerationService } = await import('./DynamicPromptGenerationService.js');
-        const promptGenerator = new DynamicPromptGenerationService();
-        
-        const enhancementPrompt = await promptGenerator.generatePrompt('task_enhancement', {
-          userQuery: prompt,
-          cpuAnalysis: JSON.stringify(cpuAnalysis),
-          analysisType: 'complexity_and_skills',
-          expectedFormat: 'json',
-          complexityLevel: cpuAnalysis.complexity || 'medium'
-        });
+          const { DynamicPromptGenerationService } = await import('./DynamicPromptGenerationService.js');
+          const promptGenerator = new DynamicPromptGenerationService();
+          
+          const enhancementPrompt = await promptGenerator.generatePrompt('task_enhancement', {
+            userQuery: prompt,
+            cpuAnalysis: JSON.stringify(cpuAnalysis),
+            analysisType: 'complexity_and_skills',
+            expectedFormat: 'json',
+            complexityLevel: cpuAnalysis.complexity || 'medium',
+            availableAgents: promptGenerator.availableAgents // Pass available agents
+          });
 
           const llmResponse = await llmAgent.execute(enhancementPrompt);
           
@@ -115,16 +116,28 @@ export class IntelligentTaskRouter {
             model: llmResponse.metadata?.model
           });
           
-          // Merge CPU and LLM analysis
+          // Parse and validate LLM response
+          let enhancedAnalysis;
+          try {
+            enhancedAnalysis = typeof llmResponse.content === 'string' 
+              ? JSON.parse(llmResponse.content)
+              : llmResponse.content;
+          } catch (parseError) {
+            logger.error('❌ Failed to parse LLM response:', parseError);
+            enhancedAnalysis = llmResponse.content;
+          }
+          
+          // Merge CPU and LLM analysis with validation
           finalAnalysis = {
             ...cpuAnalysis,
-            complexity: llmResponse.content.complexity || cpuAnalysis.complexity,
-            confidence: Math.max(cpuAnalysis.confidence, llmResponse.content.confidence || 0),
-            intent: llmResponse.content.intent || cpuAnalysis.intent || 'general',
-            requiredSkills: llmResponse.content.requiredSkills || [],
-            subTaskCount: llmResponse.content.subTaskCount || 0,
+            complexity: this.validateComplexity(enhancedAnalysis.complexity, cpuAnalysis.complexity),
+            confidence: Math.max(cpuAnalysis.confidence, enhancedAnalysis.confidence || 0),
+            intent: enhancedAnalysis.intent || cpuAnalysis.intent || 'general',
+            requiredSkills: this.validateSkills(enhancedAnalysis.requiredSkills),
+            subTaskCount: enhancedAnalysis.subTaskCount || 0,
             enhancedByLLM: true,
-            llmReasoning: llmResponse.content.reasoning
+            llmReasoning: enhancedAnalysis.reasoning,
+            recommendedAgents: this.validateAgents(enhancedAnalysis.recommendedAgents)
           };
           
         } catch (llmError) {
@@ -728,66 +741,49 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
   getAvailableAgentsList() {
     return [
       'projectManager',
-      'architectureDesigner', 
-      'databaseDesigner',
-      'apiDesigner',
-      'codeGenerator',
-      'techLead'
+      'architectureDesigner',
+      'casualConversation'
     ];
   }
 
   selectAgentsFromAnalysis(analysis) {
-    // Safely handle requiredSkills - it might be undefined or empty
-    const requiredSkills = analysis.requiredSkills || [];
     const intent = analysis.intent || 'general';
     const agents = [];
     
     logger.info('🎯 Selecting agents from analysis:', {
       intent,
-      requiredSkills,
-      complexity: analysis.complexity,
-      hasRequiredSkills: requiredSkills.length > 0
+      complexity: analysis.complexity
     });
+
+    // Check for casual conversation first
+    if (intent === 'conversation' || analysis.complexity < 0.3) {
+      return ['casualConversation'];
+    }
     
-    // Add agents based on required skills with safe array access
-    if (requiredSkills.includes('architecture') || requiredSkills.includes('system_design')) {
+    // Technical design tasks
+    if (intent === 'technical_design' || 
+        intent === 'architecture_design' || 
+        intent === 'system_design' ||
+        intent === 'database_design' ||
+        intent === 'api_design' ||
+        intent === 'code_generation') {
       agents.push('architectureDesigner');
     }
-    if (requiredSkills.includes('database') || requiredSkills.includes('data_modeling')) {
-      agents.push('databaseDesigner');
-    }
-    if (requiredSkills.includes('api') || requiredSkills.includes('rest_api') || requiredSkills.includes('integration')) {
-      agents.push('apiDesigner');
-    }
-    if (intent === 'creation' || requiredSkills.includes('backend') || requiredSkills.includes('frontend') || requiredSkills.includes('coding')) {
-      agents.push('codeGenerator');
+    
+    // Project management or default
+    if (intent === 'project_management' || 
+        intent === 'planning' || 
+        agents.length === 0) {
+      agents.push('projectManager');
     }
     
-    // Intent-based selection when requiredSkills is empty
-    if (intent === 'architecture_design' || intent === 'system_design') {
-      agents.push('architectureDesigner');
-    }
-    if (intent === 'database_design' || intent === 'data_modeling') {
-      agents.push('databaseDesigner');
-    }
-    if (intent === 'api_design' || intent === 'integration') {
-      agents.push('apiDesigner');
+    // For complex technical tasks, use both agents
+    if (analysis.complexity > 0.7 && agents.includes('architectureDesigner')) {
+      agents.push('projectManager');
     }
     
-    // Always add tech lead for complex multi-agent tasks
-    if (agents.length > 1) {
-      agents.push('techLead');
-    }
-    
-    // Add project manager for coordination
-    agents.push('projectManager');
-    
-    // Remove duplicates and ensure we have at least one agent
-    const uniqueAgents = [...new Set(agents)];
-    const finalAgents = uniqueAgents.length > 0 ? uniqueAgents : ['projectManager'];
-    
-    logger.info('✅ Selected agents from analysis:', finalAgents);
-    return finalAgents;
+    // Remove duplicates
+    return [...new Set(agents)];
   }
 
   /**
@@ -847,5 +843,47 @@ Focus on logical task flow, dependencies, and optimal agent assignment.`;
       logger.error('❌ Error in intent classification:', error);
       throw error;
     }
+  }
+
+  /**
+   * Validate complexity score
+   */
+  validateComplexity(llmComplexity, cpuComplexity) {
+    const complexity = parseFloat(llmComplexity);
+    if (isNaN(complexity) || complexity < 0 || complexity > 1) {
+      return cpuComplexity;
+    }
+    return complexity;
+  }
+
+  /**
+   * Validate and filter required skills
+   */
+  validateSkills(skills = []) {
+    if (!Array.isArray(skills)) return [];
+    
+    // Get all available skills from agents
+    const availableSkills = new Set();
+    Object.values(this.orchestrator.getAvailableAgents()).forEach(agent => {
+      agent.skills.forEach(skill => availableSkills.add(skill.toLowerCase()));
+    });
+    
+    // Filter and normalize skills
+    return skills
+      .filter(skill => typeof skill === 'string')
+      .map(skill => skill.toLowerCase())
+      .filter(skill => availableSkills.has(skill));
+  }
+
+  /**
+   * Validate and filter recommended agents
+   */
+  validateAgents(agents = []) {
+    if (!Array.isArray(agents)) return [];
+    
+    const availableAgents = Object.keys(this.orchestrator.getAvailableAgents());
+    return agents
+      .filter(agent => typeof agent === 'string')
+      .filter(agent => availableAgents.includes(agent));
   }
 } 

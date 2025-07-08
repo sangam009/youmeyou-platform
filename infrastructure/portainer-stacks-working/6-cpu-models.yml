@@ -1,40 +1,24 @@
 # ================================================================================================
-# CPU MODELS STACK - DUAL MODEL ARCHITECTURE (FLAN-T5 + MISTRAL)
+# CPU MODELS STACK - OPTIMIZED FOR CLASSIFICATION
 # ================================================================================================
 # 
-# 🚀 MAJOR OPTIMIZATIONS IMPLEMENTED:
-# - 73% Image Size Reduction: 4.99GB → 1.37GB per model
-# - CPU-Only PyTorch: Eliminates CUDA dependencies for better performance
-# - Optimized Docker Layers: Better caching and faster deployments
-# - Resource Limits: Prevents resource contention
-# - Health Checks: Ensures service reliability
+# 🚀 RESOURCE OPTIMIZATION:
+# - Focused on DistilBERT for classification tasks
+# - Lightweight and efficient deployment
 # 
-# 📊 PERFORMANCE IMPROVEMENTS:
-# - Faster container startup times (3x faster)
-# - Reduced registry push/pull times (4x faster)  
-# - Lower memory footprint in production
-# - Better horizontal scaling capabilities
+# 📊 PERFORMANCE TARGET:
+# - DistilBERT: Fast classification (100-300ms)
+# - Efficient resource usage on e2-standard-4 VM
 #
-# 🏗️ DUAL MODEL ARCHITECTURE:
-# - FLAN-T5 Small (308MB): Fast canvas merging, step planning (400-500ms target)
-# - Mistral 7B (4GB): Complex reasoning, detailed generation (30-60s acceptable)
-# - Gateway Service: Intelligent routing between CPU models
-# - DistilBERT: Task classification and complexity analysis  
-# - CodeBERT: Code analysis and understanding
-#
-# 🔗 INTEGRATION:
-# - Connects to existing youmeyou-internal network
-# - Accessible via nginx reverse proxy
-# - Integrates with design-microservice A2A system
-#
-# 📝 DEPLOYMENT:
-# docker stack deploy -c 6-cpu-models.yml cpu-models
+# 🏗️ SIMPLIFIED ARCHITECTURE:
+# - DistilBERT: Task classification and complexity analysis
+# - Gateway Service: Request routing and response handling
 # ================================================================================================
 
 version: '3.8'
 
 services:
-  # CPU Models Gateway - Routes requests between models
+  # CPU Models Gateway - Routes requests to DistilBERT
   cpu-models-gateway-prod:
     image: registry-staging.youmeyou.ai/youmeyou/cpu-models-gateway:latest
     container_name: cpu-models-gateway-prod
@@ -44,10 +28,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=7000
-      - FLAN_T5_URL=http://flan-t5-service-prod:8001  # Standardized port
-      - MISTRAL_7B_URL=http://mistral-7b-service-prod:8004  # Changed to port 8004
       - DISTILBERT_URL=http://distilbert-service-prod:8002
-      - CODEBERT_URL=http://codebert-service-prod:8003
     networks:
       - youmeyou-internal
       - cpu-models-internal
@@ -71,40 +52,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # FLAN-T5 Small Fast Generation Service - FIXED
-  flan-t5-service-prod:
-    image: registry-staging.youmeyou.ai/youmeyou/cpu-models-flan-t5:fixed
-    container_name: flan-t5-service-prod
-    restart: unless-stopped
-    environment:
-      - MODEL_NAME=google/flan-t5-small
-      - PORT=8001  # Standardized port
-      - MAX_LENGTH=256
-      - PYTHONUNBUFFERED=1
-    networks:
-      - cpu-models-internal
-    volumes:
-      - flan-t5-models:/app/models
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'           # Optimized for fast inference
-          memory: 2G            # 308MB model + overhead
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health').raise_for_status()"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
+  # DistilBERT Classification Service
   distilbert-service-prod:
     image: registry-staging.youmeyou.ai/youmeyou/cpu-models-distilbert:latest
     container_name: distilbert-service-prod
@@ -121,92 +69,17 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 1G
+          cpus: '1.0'  # Increased from 0.3 to 1.0 since we have more resources available
+          memory: 2G   # Increased from 1G to 2G for better performance
         reservations:
-          cpus: '0.3'
-          memory: 512M
+          cpus: '0.5'  # Increased from 0.2 to 0.5
+          memory: 1G   # Increased from 512M to 1G
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8002/health')"]
       interval: 60s
       timeout: 30s
       retries: 3
       start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # CodeBERT Code Analysis Service
-  codebert-service-prod:
-    image: registry-staging.youmeyou.ai/youmeyou/cpu-models-codebert:latest
-    container_name: codebert-service-prod
-    restart: unless-stopped
-    environment:
-      - MODEL_NAME=microsoft/codebert-base
-      - PORT=8003
-      - PYTHONUNBUFFERED=1
-    networks:
-      - cpu-models-internal
-    volumes:
-      - codebert-models:/app/models
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1G
-        reservations:
-          cpus: '0.3'
-          memory: 512M
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8003/health')"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # Mistral 7B Text Generation Service - OPTIMIZED RESOURCES
-  mistral-7b-service-prod:
-    image: registry-staging.youmeyou.ai/youmeyou/cpu-models-mistral-7b:latest
-    container_name: mistral-7b-service-prod
-    restart: unless-stopped
-    environment:
-      - MODEL_NAME=mistral
-      - PORT=8004
-      - PYTHONUNBUFFERED=1
-      - OLLAMA_HOST=localhost:11434
-      - OLLAMA_NUM_PARALLEL=2  # Reduced from 4 to 2 for better performance
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_FLASH_ATTENTION=1
-      - OMP_NUM_THREADS=4  # Increased from 3 to 4
-      - MKL_NUM_THREADS=4  # Increased from 3 to 4
-      - OLLAMA_KEEP_ALIVE=300  # Keep model loaded for 5 minutes
-      - OLLAMA_NOHISTORY=1  # Disable history for better performance
-      - OLLAMA_MODELS=/app/models  # Explicit model path
-    networks:
-      - cpu-models-internal
-    volumes:
-      - mistral-7b-models:/app/models
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'  # Increased from 3.0 to 4.0
-          memory: 10G  # Increased from 8G to 10G
-        reservations:
-          cpus: '3.0'  # Increased from 2.0 to 3.0
-          memory: 8G   # Increased from 6G to 8G
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-      interval: 60s
-      timeout: 45s  # Increased from 30s to 45s
-      retries: 3
-      start_period: 600s  # Increased from 300s to 600s (10 minutes)
     logging:
       driver: "json-file"
       options:
@@ -221,11 +94,5 @@ networks:
     internal: false
 
 volumes:
-  flan-t5-models:
-    driver: local
   distilbert-models:
     driver: local
-  codebert-models:
-    driver: local
-  mistral-7b-models:
-    driver: local 

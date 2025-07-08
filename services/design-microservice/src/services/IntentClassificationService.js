@@ -133,37 +133,33 @@ export class IntentClassificationService {
       conversationStyle: 'professional'
     };
 
-    // Use CodeBERT for code-related queries
-    if (primaryIntent.intent === 'code_development' && this.modelAvailability.codebert) {
-      const codeAnalysis = await this.analyzeWithCodeBERT(userQuery);
-      strategy.codeAnalysis = codeAnalysis;
-      strategy.suggestedAgents = ['codeGenerator', 'techLead'];
+    // Check for casual conversation first
+    if (primaryIntent.intent === 'casual_conversation' || 
+        primaryIntent.complexity < 0.3) {
+      strategy.type = 'non_technical';
+      strategy.suggestedAgents = ['casualConversation'];
+      return strategy;
+    }
+
+    // Technical tasks go to ArchitectureDesigner
+    if (primaryIntent.intent === 'technical_architecture' ||
+        primaryIntent.intent === 'code_development' ||
+        primaryIntent.intent === 'data_analysis' ||
+        primaryIntent.intent === 'api_design') {
+      strategy.suggestedAgents = ['architectureDesigner'];
       
-      if (codeAnalysis.requiresArchitecture) {
-        strategy.suggestedAgents.unshift('architectureDesigner');
+      // Add project manager for complex tasks
+      if (primaryIntent.complexity > 0.7) {
+        strategy.suggestedAgents.push('projectManager');
       }
     }
-    
-    // Use DistilBERT for architectural analysis (Mistral removed - too slow on CPU)
-    else if (primaryIntent.intent === 'technical_architecture') {
-      strategy.suggestedAgents = ['projectManager', 'architectureDesigner'];
-      
-      // Use secondary intent analysis from DistilBERT to determine additional agents
-      if (primaryIntent.secondaryIntents?.includes('database') || 
-          userQuery.toLowerCase().includes('database') || 
-          userQuery.toLowerCase().includes('data')) {
-        strategy.suggestedAgents.push('databaseDesigner');
-      }
-      if (primaryIntent.secondaryIntents?.includes('api') || 
-          userQuery.toLowerCase().includes('api') || 
-          userQuery.toLowerCase().includes('endpoint')) {
-        strategy.suggestedAgents.push('apiDesigner');
-      }
+    // Project management tasks
+    else if (primaryIntent.intent === 'project_management') {
+      strategy.suggestedAgents = ['projectManager'];
     }
-    
-    // Default technical routing
+    // Default to project manager
     else {
-      strategy.suggestedAgents = this.selectAgentsFromIntent(primaryIntent);
+      strategy.suggestedAgents = ['projectManager'];
     }
 
     return strategy;
@@ -289,11 +285,12 @@ export class IntentClassificationService {
    */
   selectAgentsFromIntent(primaryIntent) {
     const agentMapping = {
-      'technical_architecture': ['projectManager', 'architectureDesigner'],
-      'code_development': ['codeGenerator', 'techLead'],
+      'technical_architecture': ['architectureDesigner'],
+      'code_development': ['architectureDesigner'],
       'project_management': ['projectManager'],
-      'data_analysis': ['databaseDesigner', 'architectureDesigner'],
-      'casual_conversation': ['casualConversation']  // Use dedicated casual conversation agent
+      'data_analysis': ['architectureDesigner'],
+      'api_design': ['architectureDesigner'],
+      'casual_conversation': ['casualConversation']
     };
 
     return agentMapping[primaryIntent.intent] || ['projectManager'];

@@ -2,28 +2,46 @@ import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 
 /**
- * LLM Agent with optimized request handling
+ * LLM Agent with optimized request handling and multi-key support
  */
 export class LLMAgent {
   static instance = null;
+  static secondaryInstance = null;
   static requestCache = new Map();
   static batchedRequests = [];
   static batchTimeout = null;
   static BATCH_DELAY = 100; // ms
   static CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  constructor() {
-    if (LLMAgent.instance) {
+  constructor(useSecondaryKey = false) {
+    if (useSecondaryKey && LLMAgent.secondaryInstance) {
+      return LLMAgent.secondaryInstance;
+    }
+    if (!useSecondaryKey && LLMAgent.instance) {
       return LLMAgent.instance;
     }
+
     this.model = null;
     this.initialized = false;
-    LLMAgent.instance = this;
+    this.isSecondary = useSecondaryKey;
+
+    if (useSecondaryKey) {
+      LLMAgent.secondaryInstance = this;
+    } else {
+      LLMAgent.instance = this;
+    }
   }
 
-  static getInstance() {
+  static getInstance(useSecondaryKey = false) {
+    if (useSecondaryKey) {
+      if (!LLMAgent.secondaryInstance) {
+        LLMAgent.secondaryInstance = new LLMAgent(true);
+      }
+      return LLMAgent.secondaryInstance;
+    }
+
     if (!LLMAgent.instance) {
-      LLMAgent.instance = new LLMAgent();
+      LLMAgent.instance = new LLMAgent(false);
     }
     return LLMAgent.instance;
   }
@@ -36,10 +54,10 @@ export class LLMAgent {
 
     try {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const apiKey = config.googleAI.apiKey;
+      const apiKey = this.isSecondary ? config.googleAI.secondaryKey : config.googleAI.apiKey;
       
       if (!apiKey) {
-        logger.warn('⚠️ No Google AI API key found, LLM will run in mock mode');
+        logger.warn(`⚠️ No Google AI API key found for ${this.isSecondary ? 'secondary' : 'primary'} instance, LLM will run in mock mode`);
         return;
       }
 
@@ -47,8 +65,8 @@ export class LLMAgent {
       this.model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       this.initialized = true;
       
-      logger.info('🤖 GoogleGenerativeAI client created');
-      logger.info('🤖 [LLM INIT] LLMAgent initialized with Gemini 1.5 Flash (quota-optimized) - NO AUTO TEST');
+      logger.info(`🤖 GoogleGenerativeAI client created (${this.isSecondary ? 'secondary' : 'primary'} key)`);
+      logger.info(`🤖 [LLM INIT] LLMAgent initialized with Gemini 1.5 Flash (${this.isSecondary ? 'secondary' : 'primary'} key) - NO AUTO TEST`);
 
     } catch (error) {
       logger.error('❌ Failed to initialize LLM:', error);
@@ -110,6 +128,7 @@ export class LLMAgent {
       LLMAgent.batchedRequests.push({
         prompt,
         options,
+        isSecondary: this.isSecondary,
         resolve,
         reject
       });
@@ -130,17 +149,22 @@ export class LLMAgent {
     LLMAgent.batchTimeout = null;
 
     try {
-      // Combine similar requests
-      const uniqueRequests = this.deduplicateRequests(requests);
-      
-      // Execute requests in parallel with rate limiting
-      const results = await Promise.all(
-        uniqueRequests.map(request => this.executeSingle(request.prompt, request.options))
-      );
+      // Group requests by key type
+      const primaryRequests = requests.filter(r => !r.isSecondary);
+      const secondaryRequests = requests.filter(r => r.isSecondary);
+
+      // Process each group separately
+      const [primaryResults, secondaryResults] = await Promise.all([
+        this.processRequestGroup(primaryRequests, false),
+        this.processRequestGroup(secondaryRequests, true)
+      ]);
+
+      // Combine results
+      const results = [...primaryResults, ...secondaryResults];
 
       // Match results back to original requests
       requests.forEach((request, i) => {
-        const result = results[this.findMatchingResult(request, uniqueRequests)];
+        const result = results[this.findMatchingResult(request, request.isSecondary ? secondaryRequests : primaryRequests)];
         LLMAgent.cacheResponse(request.prompt, request.options, result);
         request.resolve(result);
       });
@@ -151,10 +175,24 @@ export class LLMAgent {
   }
 
   /**
+   * Process a group of requests (primary or secondary)
+   */
+  async processRequestGroup(requests, isSecondary) {
+    if (requests.length === 0) return [];
+
+    const uniqueRequests = this.deduplicateRequests(requests);
+    const instance = LLMAgent.getInstance(isSecondary);
+    
+    return Promise.all(
+      uniqueRequests.map(request => instance.executeSingle(request.prompt, request.options))
+    );
+  }
+
+  /**
    * Find matching result index for request
    */
-  findMatchingResult(request, uniqueRequests) {
-    return uniqueRequests.findIndex(ur => 
+  findMatchingResult(request, groupRequests) {
+    return groupRequests.findIndex(ur => 
       ur.prompt === request.prompt && 
       JSON.stringify(ur.options) === JSON.stringify(request.options)
     );
@@ -181,7 +219,7 @@ export class LLMAgent {
    */
   async executeSingle(prompt, options = {}) {
     if (!this.model) {
-      logger.warn('⚠️ LLM not initialized, returning mock response');
+      logger.warn(`⚠️ LLM not initialized (${this.isSecondary ? 'secondary' : 'primary'}), returning mock response`);
       return { content: 'Mock LLM response' };
     }
 
@@ -190,6 +228,7 @@ export class LLMAgent {
     try {
       logger.info('📤 [LLM REQUEST] Sending request to Gemini model:', {
         callId: requestId,
+        keyType: this.isSecondary ? 'secondary' : 'primary',
         model: 'models/gemini-1.5-flash',
         promptLength: prompt.length,
         promptPreview: prompt.substring(0, 100) + '...'
@@ -198,30 +237,21 @@ export class LLMAgent {
       const startTime = Date.now();
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const responseTime = Date.now() - startTime;
 
-      const responseText = response.text();
-      
+      const duration = Date.now() - startTime;
       logger.info('📥 [LLM RESPONSE] Received response from Gemini model:', {
         callId: requestId,
-        model: 'models/gemini-1.5-flash',
-        requestTime: `${responseTime}ms`,
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 100) + '...'
+        keyType: this.isSecondary ? 'secondary' : 'primary',
+        duration: `${duration}ms`,
+        responseLength: response.text().length
       });
 
-      return {
-        content: responseText,
-        metadata: {
-          model: 'models/gemini-1.5-flash',
-          requestId,
-          responseTime
-        }
-      };
+      return response;
 
     } catch (error) {
-      logger.error('❌ LLM request failed:', {
+      logger.error('❌ [LLM ERROR] Error executing LLM request:', {
         callId: requestId,
+        keyType: this.isSecondary ? 'secondary' : 'primary',
         error: error.message
       });
       throw error;

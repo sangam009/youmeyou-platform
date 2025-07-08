@@ -12,11 +12,14 @@ export class A2AService {
     this.intelligentRouter = new IntelligentTaskRouter();
     this.orchestrator = new AgentOrchestrator();
     
-    // Get agents from orchestrator instead of creating new instances
-    this.projectManager = this.orchestrator.projectManager;
-    this.techLead = this.orchestrator.techLead || null; // May not exist yet
+    // Get core agents from orchestrator
+    this.agents = {
+      projectManager: this.orchestrator.projectManager,
+      architectureDesigner: this.orchestrator.architectureDesigner,
+      casualConversation: this.orchestrator.casualConversation
+    };
     
-    logger.info('🚀 [A2A SERVICE] A2AService initialized with singleton orchestrator and router');
+    logger.info('🚀 [A2A SERVICE] A2AService initialized with core agents');
   }
 
   /**
@@ -273,12 +276,28 @@ export class A2AService {
 
   getAgentCapabilities(agentId) {
     const capabilities = {
-      'project-manager': ['project_planning', 'task_breakdown', 'resource_allocation'],
-      'tech-lead': ['architecture_review', 'code_review', 'technical_guidance'],
-      'architecture-designer': ['system_design', 'scalability_analysis', 'pattern_recommendation'],
-      'database-designer': ['schema_design', 'query_optimization', 'data_modeling'],
-      'api-designer': ['rest_api_design', 'authentication_flows', 'api_documentation'],
-      'code-generator': ['code_generation', 'testing', 'documentation']
+      'project-manager': [
+        'project_planning',
+        'task_breakdown',
+        'resource_allocation',
+        'risk_management',
+        'team_coordination'
+      ],
+      'architecture-designer': [
+        'system_design',
+        'scalability_analysis',
+        'database_design',
+        'api_design',
+        'code_generation',
+        'technical_documentation'
+      ],
+      'casual-conversation': [
+        'friendly_chat',
+        'general_assistance',
+        'basic_information',
+        'user_support',
+        'non_technical_help'
+      ]
     };
     
     return capabilities[agentId] || ['general_assistance'];

@@ -1106,12 +1106,18 @@ Please provide your expert analysis and recommendations for this task.`;
    */
   analyzeResponse(responseText, agentName) {
     const analysisKeywords = {
-      'architectureDesigner': ['scalability', 'performance', 'architecture', 'pattern'],
-      'databaseDesigner': ['schema', 'optimization', 'data', 'query'],
-      'apiDesigner': ['endpoint', 'authentication', 'integration', 'rest'],
-      'codeGenerator': ['implementation', 'testing', 'clean code', 'best practices'],
-      'projectManager': ['timeline', 'resources', 'coordination', 'planning'],
-      'techLead': ['quality', 'standards', 'architecture', 'guidance']
+      'architectureDesigner': [
+        'scalability', 'performance', 'architecture', 'pattern',
+        'database', 'schema', 'api', 'endpoints', 'code', 'implementation'
+      ],
+      'projectManager': [
+        'timeline', 'resources', 'coordination', 'planning',
+        'risk', 'milestones', 'team', 'strategy'
+      ],
+      'casualConversation': [
+        'help', 'information', 'clarification', 'explanation',
+        'guidance', 'support', 'understanding'
+      ]
     };
 
     const keywords = analysisKeywords[agentName] || [];

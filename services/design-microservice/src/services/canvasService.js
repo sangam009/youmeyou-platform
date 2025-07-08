@@ -72,57 +72,67 @@ class CanvasService {
       };
 
       // Handle different types of updates
-      if (updates.type === 'code_generation') {
+      if (updates.type === 'architecture_update' || 
+         updates.type === 'database_design' || 
+         updates.type === 'api_design' || 
+         updates.type === 'code_generation') {
         const task = {
-          type: 'code_generation',
-          description: updates.description,
-          language: updates.language,
-          framework: updates.framework
-        };
-
-        const CodeGeneratorAgent = (await import('./agents/CodeGeneratorAgent.js')).default;
-        const codeAgent = new CodeGeneratorAgent();
-        const result = await codeAgent.execute(`Generate ${updates.language} code for: ${updates.description}`, context);
-        canvas.content.generatedCode = result.code || result.response;
-        canvas.content.codeAnalysis = result.analysis || 'Code generated';
-      } 
-      else if (updates.type === 'architecture_update') {
-        const task = {
-          type: 'architecture_design',
-          requirements: updates.requirements
+          type: updates.type,
+          requirements: updates.requirements,
+          currentState: canvas.content
         };
 
         const { ArchitectureDesignerAgent } = await import('./agents/ArchitectureDesignerAgent.js');
         const architectureAgent = new ArchitectureDesignerAgent();
-        const result = await architectureAgent.execute(updates.requirements.join(', '), context);
-        canvas.content = {
-          ...canvas.content,
-          design: result.design || result.response,
-          diagram: result.diagram || 'Architecture diagram',
-          documentation: result.documentation || 'Architecture documentation',
-          analysis: result.analysis || 'Architecture analysis'
-        };
-      }
-      else if (updates.type === 'database_design') {
-        const task = {
-          type: 'database_design',
-          requirements: updates.requirements,
-          currentSchema: canvas.content.databaseSchema
-        };
+        const result = await architectureAgent.execute(updates.requirements.join(', '), {
+          ...context,
+          taskType: updates.type,
+          currentState: canvas.content
+        });
 
-        const DatabaseDesignerAgent = (await import('./agents/DatabaseDesignerAgent.js')).default;
-        const dbAgent = new DatabaseDesignerAgent();
-        const result = await dbAgent.execute(updates.requirements.join(', '), context);
-        canvas.content = {
-          ...canvas.content,
-          databaseSchema: result.schema || result.response,
-          erDiagram: result.erDiagram || 'ER diagram',
-          queryOptimization: result.optimization || 'Query optimization',
-          indexingStrategy: result.indexing || 'Indexing strategy',
-          migrationPlan: result.migrationPlan || 'Migration plan',
-          schemaValidation: result.validation || 'Schema validation',
-          databaseOptimizations: result.optimizations || 'Database optimizations'
-        };
+        // Update canvas based on task type
+        switch(updates.type) {
+          case 'architecture_update':
+            canvas.content = {
+              ...canvas.content,
+              design: result.design,
+              diagram: result.diagram || 'Architecture diagram',
+              documentation: result.documentation,
+              analysis: result.analysis
+            };
+            break;
+
+          case 'database_design':
+            canvas.content = {
+              ...canvas.content,
+              databaseSchema: result.design?.schema || result.design,
+              erDiagram: result.design?.diagram || 'ER diagram',
+              queryOptimization: result.design?.optimization,
+              indexingStrategy: result.design?.indexing,
+              schemaValidation: result.design?.validation
+            };
+            break;
+
+          case 'api_design':
+            canvas.content = {
+              ...canvas.content,
+              apiDesign: result.design?.endpoints || result.design,
+              authentication: result.design?.authentication,
+              documentation: result.design?.documentation,
+              errorHandling: result.design?.errorResponses
+            };
+            break;
+
+          case 'code_generation':
+            canvas.content = {
+              ...canvas.content,
+              generatedCode: result.design?.code || result.design,
+              tests: result.design?.tests,
+              documentation: result.design?.documentation,
+              dependencies: result.design?.dependencies
+            };
+            break;
+        }
       }
       else if (updates.type === 'documentation_update') {
         const task = {
@@ -130,9 +140,12 @@ class CanvasService {
           content: canvas.content
         };
 
-        const TechLeadAgent = (await import('./agents/TechLeadAgent.js')).default;
-        const techLeadAgent = new TechLeadAgent();
-        const result = await techLeadAgent.execute('Generate documentation for this project', context);
+        const { ArchitectureDesignerAgent } = await import('./agents/ArchitectureDesignerAgent.js');
+        const architectureAgent = new ArchitectureDesignerAgent();
+        const result = await architectureAgent.execute('Generate documentation for this project', {
+          ...context,
+          taskType: 'documentation'
+        });
         canvas.content.documentation = result.documentation || result.response;
       }
 
@@ -156,38 +169,21 @@ class CanvasService {
         userId: canvas.userId,
         projectId: canvas.projectId,
         canvasId: canvas._id,
-        currentDesign: canvas.content.design,
-        currentSchema: canvas.content.databaseSchema
+        currentState: canvas.content
       };
 
-      // Analyze current design and schema
-      const architectureTask = {
-        type: 'code_analysis',
-        code: canvas.content.generatedCode
-      };
+      const { ArchitectureDesignerAgent } = await import('./agents/ArchitectureDesignerAgent.js');
+      const architectureAgent = new ArchitectureDesignerAgent();
+      
+      // Analyze all aspects of the canvas
+      const analysis = await architectureAgent.execute('Analyze current design state', {
+        ...context,
+        taskType: 'analysis',
+        requirements: canvas.requirements
+      });
 
-      const databaseTask = {
-        type: 'database_design',
-        requirements: canvas.requirements,
-        currentSchema: canvas.content.databaseSchema
-      };
-
-      const CodeGeneratorAgent = (await import('./agents/CodeGeneratorAgent.js')).default;
-      const DatabaseDesignerAgent = (await import('./agents/DatabaseDesignerAgent.js')).default;
-      
-      const codeAgent = new CodeGeneratorAgent();
-      const dbAgent = new DatabaseDesignerAgent();
-      
-      const [architectureAnalysis, databaseAnalysis] = await Promise.all([
-        codeAgent.execute(`Analyze this code: ${canvas.content.generatedCode}`, context),
-        dbAgent.execute(`Analyze database schema: ${JSON.stringify(canvas.content.databaseSchema)}`, context)
-      ]);
-      
       // Update canvas with analysis results
-      canvas.content.analysis = {
-        architecture: architectureAnalysis,
-        database: databaseAnalysis
-      };
+      canvas.content.analysis = analysis;
       await canvas.save();
 
       return canvas.content.analysis;

@@ -3,87 +3,184 @@ import logger from '../../utils/logger.js';
 import { LLMAgent } from '../LLMAgent.js';
 
 /**
- * Architecture Designer Agent
- * Specializes in system architecture design and scalability analysis
+ * Enhanced Architecture Designer Agent
+ * Handles all technical design aspects including architecture, database, API, and code
  */
 export class ArchitectureDesignerAgent {
-  constructor() {
+  constructor(geminiKey) {
     this.name = 'Architecture Designer';
     this.capabilities = [
       'system-architecture',
       'scalability-analysis',
       'component-design',
-      'performance-optimization'
+      'performance-optimization',
+      'database-design',
+      'schema-optimization',
+      'api-design',
+      'security-patterns',
+      'code-generation',
+      'testing-strategy'
     ];
     
-    logger.info('🏗️ ArchitectureDesignerAgent initialized');
-    this.llmAgent = LLMAgent.getInstance();
+    logger.info('🏗️ Enhanced ArchitectureDesignerAgent initialized');
+    this.llmAgent = LLMAgent.getInstance(true); // Use secondary key
   }
 
   /**
-   * Execute architecture design task
+   * Execute design task with expanded capabilities
    */
-  async execute(prompt, context = {}) {
-    return this.handleTask(prompt, context);
-  }
-
-  /**
-   * Handle architecture design task with streaming support
-   */
-  async handleTask(prompt, context = {}) {
-    const { streamingEnabled, streamingCallback } = context;
-
+  async execute(userQuery, context = {}) {
     try {
-      if (streamingEnabled && streamingCallback) {
-        // Send initial status
-        streamingCallback({
-          type: 'agent_start',
-          agent: 'Architecture Designer',
-          status: 'Starting architecture analysis...',
-          completionScore: 0
-        });
-      }
-
-      // Execute architecture design task
-      const result = await this.llmAgent.execute(prompt, {
-        ...context,
-        specialization: 'architecture',
-        taskType: 'design'
-      });
-
-      if (streamingEnabled && streamingCallback) {
-        // Send completion status
-        streamingCallback({
-          type: 'agent_complete',
-          agent: 'Architecture Designer',
-          status: 'Architecture analysis complete',
-          completionScore: 100,
-          result
-        });
+      // Analyze the technical requirements
+      const analysis = await this.analyzeRequirements(userQuery);
+      
+      // Generate appropriate design based on type
+      let design;
+      switch(analysis.type) {
+        case 'database':
+          design = await this.generateDatabaseDesign(analysis);
+          break;
+        case 'api':
+          design = await this.generateAPIDesign(analysis);
+          break;
+        case 'code':
+          design = await this.generateCodeImplementation(analysis);
+          break;
+        default:
+          design = await this.generateArchitectureDesign(analysis);
       }
 
       return {
-        type: 'architecture_design',
-        content: result.content,
-        metadata: {
-          ...result.metadata,
-          agent: 'Architecture Designer'
-        }
+        design,
+        analysis,
+        recommendations: await this.generateRecommendations(design, analysis),
+        nextSteps: await this.generateNextSteps(design, analysis)
       };
 
     } catch (error) {
-      logger.error('❌ Architecture Designer task failed:', error);
-      
-      if (streamingEnabled && streamingCallback) {
-        streamingCallback({
-          type: 'error',
-          agent: 'Architecture Designer',
-          error: error.message
-        });
-      }
-      
+      logger.error('❌ Architecture design error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Analyze technical requirements using DistilBERT and Gemini
+   */
+  async analyzeRequirements(requirements) {
+    // Use DistilBERT for initial classification
+    const { DistilBERTComplexityAnalyzer } = await import('../cpuModels/DistilBERTComplexityAnalyzer.js');
+    const analyzer = new DistilBERTComplexityAnalyzer();
+    
+    const classification = await analyzer.analyzeComplexity(requirements);
+    
+    // Use Gemini for detailed analysis
+    const detailedAnalysis = await this.llmAgent.execute(
+      this.buildRequirementsAnalysisPrompt(requirements, classification)
+    );
+
+    return {
+      ...classification,
+      details: detailedAnalysis
+    };
+  }
+
+  /**
+   * Generate database design with schema and optimization
+   */
+  async generateDatabaseDesign(analysis) {
+    const prompt = `Design a database schema for the following requirements:
+${analysis.details}
+
+Consider:
+1. Data relationships and normalization
+2. Performance optimization
+3. Scalability requirements
+4. Data integrity constraints
+5. Index recommendations
+
+Provide the design in this format:
+{
+  "tables": [],
+  "relationships": [],
+  "indexes": [],
+  "optimizationStrategy": ""
+}`;
+
+    const response = await this.llmAgent.execute(prompt);
+    return JSON.parse(response.content);
+  }
+
+  /**
+   * Generate API design with endpoints and documentation
+   */
+  async generateAPIDesign(analysis) {
+    const prompt = `Design a RESTful API for the following requirements:
+${analysis.details}
+
+Consider:
+1. Resource hierarchy
+2. Authentication/Authorization
+3. Rate limiting
+4. Error handling
+5. Documentation
+
+Provide the design in this format:
+{
+  "endpoints": [],
+  "authentication": {},
+  "rateLimit": {},
+  "errorResponses": {},
+  "documentation": ""
+}`;
+
+    const response = await this.llmAgent.execute(prompt);
+    return JSON.parse(response.content);
+  }
+
+  /**
+   * Generate code implementation with tests
+   */
+  async generateCodeImplementation(analysis) {
+    const prompt = `Generate implementation code for:
+${analysis.details}
+
+Consider:
+1. Clean code principles
+2. Error handling
+3. Performance
+4. Testing strategy
+5. Documentation
+
+Provide the implementation in this format:
+{
+  "code": "",
+  "tests": "",
+  "documentation": "",
+  "dependencies": []
+}`;
+
+    const response = await this.llmAgent.execute(prompt);
+    return JSON.parse(response.content);
+  }
+
+  /**
+   * Build requirements analysis prompt
+   */
+  buildRequirementsAnalysisPrompt(requirements, classification) {
+    return `Analyze these technical requirements:
+${requirements}
+
+Classification:
+${JSON.stringify(classification, null, 2)}
+
+Provide a detailed analysis considering:
+1. Technical constraints
+2. Scalability needs
+3. Performance requirements
+4. Security considerations
+5. Integration points
+
+Format the response as a structured JSON object.`;
   }
 
   /**

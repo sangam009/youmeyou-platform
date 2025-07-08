@@ -1,18 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../../utils/logger.js';
-
-// Import our existing agents - fix imports to match actual exports
 import { AgentOrchestrator } from './AgentOrchestrator.js';
-import ProjectManagerAgent from './ProjectManagerAgent.js';
-import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
-import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
-import APIDesignerAgent from './APIDesignerAgent.js';
-import CodeGeneratorAgent from './CodeGeneratorAgent.js';
-import TechLeadAgent from './TechLeadAgent.js';
 
 /**
  * A2A Agent Executor for the Design Microservice
- * Implements the A2A protocol and coordinates all design agents
+ * Implements the A2A protocol and coordinates core agents
  */
 export class DesignAgentExecutor {
   constructor() {
@@ -21,13 +13,14 @@ export class DesignAgentExecutor {
     // Initialize our agent system - Use singleton orchestrator only
     this.orchestrator = new AgentOrchestrator();
     
-    // Get agents from orchestrator instead of creating new instances
+    // Get core agents from orchestrator
     this.agents = {
       projectManager: this.orchestrator.projectManager,
-      architectureDesigner: this.orchestrator.architectureDesigner
+      architectureDesigner: this.orchestrator.architectureDesigner,
+      casualConversation: this.orchestrator.casualConversation
     };
     
-    logger.info('🤖 [AGENT EXECUTOR] DesignAgentExecutor initialized with singleton agents');
+    logger.info('🤖 [AGENT EXECUTOR] DesignAgentExecutor initialized with core agents');
   }
 
   /**

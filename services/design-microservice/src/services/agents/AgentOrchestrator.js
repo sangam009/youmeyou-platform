@@ -6,14 +6,21 @@ import { ProjectManagerAgent } from './ProjectManagerAgent.js';
 import { ArchitectureDesignerAgent } from './ArchitectureDesignerAgent.js';
 import { CasualConversationAgent } from './CasualConversationAgent.js';
 
-// Import individual agents - fix imports to match actual exports
-import DatabaseDesignerAgent from './DatabaseDesignerAgent.js';
-import APIDesignerAgent from './APIDesignerAgent.js';
-import CodeGeneratorAgent from './CodeGeneratorAgent.js';
-import TechLeadAgent from './TechLeadAgent.js';
+// Gemini API key configuration
+const GEMINI_KEYS = {
+  KEY1: process.env.GEMINI_API_KEY, // Primary key
+  KEY2: 'AIzaSyDZCyoI4FFZPnsM7aysk5EIRuJsuN4F0Fs' // Secondary key
+};
+
+// Agent-specific key mapping
+const AGENT_KEY_MAP = {
+  'projectManager': 'KEY1',
+  'architectureDesigner': 'KEY2',
+  'casualConversation': 'KEY1' // Use primary key for casual conversations
+};
 
 /**
- * Orchestrates multi-agent collaboration with optimized LLM usage
+ * Orchestrates streamlined agent collaboration with optimized LLM usage
  */
 export class AgentOrchestrator {
   static instance = null;
@@ -26,19 +33,16 @@ export class AgentOrchestrator {
       return AgentOrchestrator.instance;
     }
 
-    this.llmAgent = LLMAgent.getInstance();
-    this.taskAnalyzer = new LLMDrivenTaskAnalyzer();
-    this.projectManager = new ProjectManagerAgent();
-    this.architectureDesigner = new ArchitectureDesignerAgent();
-    this.casualConversation = new CasualConversationAgent();
-    
-    // Initialize all agents
-    this.databaseDesigner = new DatabaseDesignerAgent();
-    this.apiDesigner = new APIDesignerAgent();
-    this.codeGenerator = new CodeGeneratorAgent();
-    this.techLead = new TechLeadAgent();
+    // Initialize core agents with specific Gemini keys
+    this.projectManager = new ProjectManagerAgent(GEMINI_KEYS[AGENT_KEY_MAP['projectManager']]);
+    this.architectureDesigner = new ArchitectureDesignerAgent(GEMINI_KEYS[AGENT_KEY_MAP['architectureDesigner']]);
+    this.casualConversation = new CasualConversationAgent(GEMINI_KEYS[AGENT_KEY_MAP['casualConversation']]);
 
-    // Initialize core agents only
+    // Initialize task analyzer with primary key
+    this.llmAgent = LLMAgent.getInstance(GEMINI_KEYS.KEY1);
+    this.taskAnalyzer = new LLMDrivenTaskAnalyzer();
+
+    // Core agent mapping
     this.agents = {
       projectManager: this.projectManager,
       architectureDesigner: this.architectureDesigner,
@@ -46,7 +50,7 @@ export class AgentOrchestrator {
     };
 
     AgentOrchestrator.instance = this;
-    logger.info('🎯 AgentOrchestrator initialized with all agents');
+    logger.info('🎯 AgentOrchestrator initialized with core agents and multi-key strategy');
   }
 
   static getInstance() {
@@ -137,49 +141,58 @@ export class AgentOrchestrator {
    * Execute complex task with coordinated agents
    */
   async executeCoordinatedTask(prompt, analysis, context) {
-    const agentSelection = await this.selectAgentsForTask(prompt, analysis);
-    
-    if (!agentSelection || !agentSelection.selectedAgents || agentSelection.selectedAgents.length === 0) {
-      logger.warn('⚠️ No agents selected, falling back to project manager');
-      agentSelection = {
-        selectedAgents: ['projectManager'],
-        routingStrategy: 'simple',
+    try {
+      // Use the agents already selected during analysis
+      let selectedAgents = analysis.selectedAgents || [];
+      
+      // Fallback to project manager if no agents were selected
+      if (!selectedAgents || selectedAgents.length === 0) {
+        logger.warn('⚠️ No agents selected in analysis, falling back to project manager');
+        selectedAgents = ['projectManager'];
+      }
+
+      logger.info('🤖 Executing complex task with pre-selected agents:', {
+        agentCount: selectedAgents.length,
+        agentTypes: selectedAgents,
+        complexity: analysis.complexity
+      });
+
+      // Create shared context for all agents
+      const sharedContext = {
+        ...context,
+        taskAnalysis: analysis,
+        collaboratingAgents: selectedAgents,
+        routingStrategy: analysis.complexity > 0.7 ? 'coordinated' : 'simple',
         conversationStyle: 'professional'
       };
+
+      // Map agent names to actual agent instances
+      const agentInstances = selectedAgents
+        .map(agentName => this.agents[agentName])
+        .filter(agent => agent); // Filter out any undefined agents
+
+      if (agentInstances.length === 0) {
+        logger.warn('⚠️ No valid agent instances found, falling back to project manager');
+        agentInstances.push(this.agents.projectManager);
+      }
+
+      // Execute in parallel with shared context
+      const results = await Promise.all(
+        agentInstances.map(agent => agent.execute(prompt, sharedContext))
+      );
+
+      // Combine results
+      return this.combineResults(results, analysis);
+      
+    } catch (error) {
+      logger.error('❌ Coordinated task execution failed:', error);
+      // Fallback to project manager on error
+      return this.agents.projectManager.execute(prompt, {
+        ...context,
+        error: error.message,
+        fallback: true
+      });
     }
-
-    logger.info('🤖 Executing complex task with agents:', {
-      agentCount: agentSelection.selectedAgents.length,
-      agentTypes: agentSelection.selectedAgents,
-      complexity: analysis.complexity
-    });
-
-    // Create shared context for all agents
-    const sharedContext = {
-      ...context,
-      taskAnalysis: analysis,
-      collaboratingAgents: agentSelection.selectedAgents,
-      routingStrategy: agentSelection.routingStrategy,
-      conversationStyle: agentSelection.conversationStyle
-    };
-
-    // Map agent names to actual agent instances
-    const agentInstances = agentSelection.selectedAgents
-      .map(agentName => this.agents[agentName])
-      .filter(agent => agent); // Filter out any undefined agents
-
-    if (agentInstances.length === 0) {
-      logger.warn('⚠️ No valid agent instances found, falling back to project manager');
-      agentInstances.push(this.agents.projectManager);
-    }
-
-    // Execute in parallel with shared context
-    const results = await Promise.all(
-      agentInstances.map(agent => agent.execute(prompt, sharedContext))
-    );
-
-    // Combine results
-    return this.combineResults(results, analysis);
   }
 
   /**
@@ -208,12 +221,37 @@ export class AgentOrchestrator {
     try {
       logger.info('🤖 Starting intelligent agent selection for:', userQuery.substring(0, 100) + '...');
 
-      // Use DistilBERT for agent selection
+      // If we already have recommended agents from enhanced analysis, use them
+      if (analysis.recommendedAgents && analysis.recommendedAgents.length > 0) {
+        logger.info('✅ Using pre-analyzed agent recommendations:', {
+          agents: analysis.recommendedAgents,
+          source: 'enhanced-analysis'
+        });
+        
+        return {
+          selectedAgents: analysis.recommendedAgents,
+          agentAnalysis: analysis,
+          routingStrategy: analysis.complexity > 0.7 ? 'coordinated' : 'simple',
+          recommendedModel: this.selectOptimalModel(analysis),
+          conversationStyle: 'professional'
+        };
+      }
+
+      // Use DistilBERT for agent selection if no recommendations exist
       const { DistilBERTComplexityAnalyzer } = await import('../cpuModels/DistilBERTComplexityAnalyzer.js');
       const analyzer = new DistilBERTComplexityAnalyzer();
       
-      // Analyze task requirements and select agents
-      const agentSelectionPrompt = `Analyze this task and determine which specialized agents are needed: "${userQuery}"`;
+      // Generate agent selection prompt using DynamicPromptGenerationService
+      const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
+      const promptGenerator = new DynamicPromptGenerationService();
+      
+      const agentSelectionPrompt = await promptGenerator.generatePrompt('agent_selection', {
+        userQuery,
+        taskAnalysis: analysis,
+        availableAgents: this.getAvailableAgents()
+      });
+      
+      // Analyze with DistilBERT
       const agentAnalysis = await analyzer.analyzeComplexity(agentSelectionPrompt);
       
       // Get recommended agents with confidence scores
@@ -285,113 +323,141 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Get available agents (only return initialized ones)
+   * Get available agents with their capabilities
    */
   getAvailableAgents() {
-    const availableAgents = [];
-    
-    if (this.projectManager) availableAgents.push('projectManager');
-    if (this.architectureDesigner) availableAgents.push('architectureDesigner');
-    if (this.databaseDesigner) availableAgents.push('databaseDesigner');
-    if (this.apiDesigner) availableAgents.push('apiDesigner');
-    if (this.codeGenerator) availableAgents.push('codeGenerator');
-    if (this.techLead) availableAgents.push('techLead');
-    
-    return availableAgents;
+    return {
+      projectManager: {
+        skills: ['project planning', 'task breakdown', 'coordination', 'general problem solving'],
+        description: 'Handles overall project management and task coordination'
+      },
+      architectureDesigner: {
+        skills: ['system design', 'architecture planning', 'scalability analysis', 'technical decision making'],
+        description: 'Specializes in system architecture and technical design decisions'
+      },
+      casualConversation: {
+        skills: ['user interaction', 'requirement gathering', 'general assistance'],
+        description: 'Handles casual conversations and initial requirement gathering'
+      }
+    };
   }
 
   /**
-   * Analyze task and determine which agents to use
+   * Detect if query is a casual conversation
+   */
+  async detectConversationType(query) {
+    // Use DistilBERT for quick classification
+    const { DistilBERTComplexityAnalyzer } = await import('../cpuModels/DistilBERTComplexityAnalyzer.js');
+    const analyzer = new DistilBERTComplexityAnalyzer();
+    
+    const classification = await analyzer.analyzeComplexity(query);
+    
+    // Check if this is a casual conversation
+    const isCasual = classification.type === 'conversation' || 
+                    classification.complexity < 0.3 ||
+                    this.hasCasualIndicators(query);
+
+    return {
+      isCasual,
+      classification
+    };
+  }
+
+  /**
+   * Check for casual conversation indicators
+   */
+  hasCasualIndicators(query) {
+    const casualIndicators = [
+      'hello',
+      'hi',
+      'hey',
+      'how are you',
+      'what\'s up',
+      'good morning',
+      'good afternoon',
+      'good evening',
+      'thanks',
+      'thank you',
+      'bye',
+      'goodbye',
+      'chat',
+      'talk'
+    ];
+
+    const normalizedQuery = query.toLowerCase();
+    return casualIndicators.some(indicator => normalizedQuery.includes(indicator)) ||
+           // Check for questions about the agent itself
+           normalizedQuery.includes('who are you') ||
+           normalizedQuery.includes('what can you do') ||
+           normalizedQuery.includes('tell me about yourself');
+  }
+
+  /**
+   * Analyze task and determine which core agent to use
    */
   async analyzeTask(userQuery) {
     try {
       logger.info(`🔍 [ORCHESTRATOR] Analyzing task: ${userQuery.substring(0, 100)}...`);
 
-      // Simple keyword-based analysis for now
-      // In production, this would use CPU models for classification
+      // First, detect if this is a casual conversation
+      const { isCasual, classification } = await this.detectConversationType(userQuery);
+      
+      if (isCasual) {
+        logger.info('👋 [ORCHESTRATOR] Detected casual conversation');
+        return {
+          selectedAgents: ['casualConversation'],
+          context: {
+            userQuery,
+            timestamp: new Date().toISOString(),
+            complexity: classification.complexity,
+            type: 'CASUAL_CONVERSATION'
+          },
+          type: 'CASUAL_CONVERSATION',
+          complexity: classification.complexity
+        };
+      }
+
       const query = userQuery.toLowerCase();
       const selectedAgents = [];
-      const availableAgents = this.getAvailableAgents();
-      
       const context = {
         userQuery,
         timestamp: new Date().toISOString(),
-        complexity: this.calculateComplexity(query)
+        complexity: classification.complexity
       };
 
-      // Determine task type and required agents (only if available)
-      if (query.includes('architecture') || query.includes('system') || query.includes('design')) {
-        if (availableAgents.includes('architectureDesigner')) {
-          selectedAgents.push('architectureDesigner');
-        }
-        context.type = 'ARCHITECTURE_DESIGN';
+      // Technical design tasks (architecture, API, database, code)
+      if (query.includes('architecture') || 
+          query.includes('system') || 
+          query.includes('design') ||
+          query.includes('database') ||
+          query.includes('api') ||
+          query.includes('code')) {
+        selectedAgents.push('architectureDesigner');
+        context.type = 'TECHNICAL_DESIGN';
       }
 
-      if (query.includes('database') || query.includes('schema') || query.includes('data')) {
-        if (availableAgents.includes('databaseDesigner')) {
-          selectedAgents.push('databaseDesigner');
-        }
-        context.type = context.type ? 'FULL_STACK_DESIGN' : 'DATABASE_DESIGN';
-      }
-
-      if (query.includes('api') || query.includes('endpoint') || query.includes('rest')) {
-        if (availableAgents.includes('apiDesigner')) {
-          selectedAgents.push('apiDesigner');
-        }
-        context.type = context.type ? 'FULL_STACK_DESIGN' : 'API_DESIGN';
-      }
-
-      if (query.includes('code') || query.includes('implement') || query.includes('generate')) {
-        if (availableAgents.includes('codeGenerator')) {
-          selectedAgents.push('codeGenerator');
-        }
-        context.type = context.type ? 'FULL_STACK_DESIGN' : 'CODE_GENERATION';
-      }
-
-      if (query.includes('project') || query.includes('plan') || query.includes('manage')) {
-        if (availableAgents.includes('projectManager')) {
-          selectedAgents.push('projectManager');
-        }
-        context.type = context.type ? 'FULL_STACK_DESIGN' : 'PROJECT_MANAGEMENT';
-      }
-
-      // Add tech lead for complex tasks (only if available)
-      if (selectedAgents.length > 1 && availableAgents.includes('techLead')) {
-        selectedAgents.push('techLead');
-      }
-
-      // Default to project manager if no specific agents selected and available
-      if (selectedAgents.length === 0 && availableAgents.includes('projectManager')) {
+      // Project management tasks
+      if (query.includes('project') || 
+          query.includes('plan') || 
+          query.includes('manage') ||
+          selectedAgents.length === 0) { // Default to project manager
         selectedAgents.push('projectManager');
-        context.type = 'GENERAL_INQUIRY';
-      }
-
-      // If no agents available, log warning
-      if (selectedAgents.length === 0) {
-        logger.warn('⚠️ [ORCHESTRATOR] No suitable agents available for task');
-        context.type = 'NO_AGENTS_AVAILABLE';
+        context.type = selectedAgents.length > 1 ? 'FULL_PROJECT_DESIGN' : 'PROJECT_MANAGEMENT';
       }
 
       logger.info(`🎯 [ORCHESTRATOR] Selected agents: ${selectedAgents.join(', ')} for task type: ${context.type}`);
-      logger.info(`📊 [ORCHESTRATOR] Available agents: ${availableAgents.join(', ')}`);
 
       return {
         selectedAgents,
         context,
         type: context.type,
-        complexity: context.complexity,
-        availableAgents
+        complexity: context.complexity
       };
 
     } catch (error) {
       logger.error('❌ [ORCHESTRATOR] Error analyzing task:', error);
-      
-      // Fallback to project manager if available
-      const availableAgents = this.getAvailableAgents();
-      const fallbackAgent = availableAgents.includes('projectManager') ? ['projectManager'] : [];
-      
       return {
-        selectedAgents: fallbackAgent,
+        selectedAgents: ['projectManager'], // Fallback to project manager
         context: {
           userQuery,
           timestamp: new Date().toISOString(),
@@ -399,8 +465,7 @@ export class AgentOrchestrator {
           type: 'FALLBACK'
         },
         type: 'FALLBACK',
-        complexity: 0.5,
-        availableAgents
+        complexity: 0.5
       };
     }
   }
