@@ -178,33 +178,35 @@ services:
     restart: unless-stopped
     environment:
       - MODEL_NAME=mistral
-      - PORT=8004  # Changed from 8001 to 8004
+      - PORT=8004
       - PYTHONUNBUFFERED=1
-      - OLLAMA_HOST=localhost:11434  # Changed to localhost since port is internal
-      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_HOST=localhost:11434
+      - OLLAMA_NUM_PARALLEL=2  # Reduced from 4 to 2 for better performance
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_FLASH_ATTENTION=1
-      - OMP_NUM_THREADS=3
-      - MKL_NUM_THREADS=3
+      - OMP_NUM_THREADS=4  # Increased from 3 to 4
+      - MKL_NUM_THREADS=4  # Increased from 3 to 4
+      - OLLAMA_KEEP_ALIVE=300  # Keep model loaded for 5 minutes
+      - OLLAMA_NOHISTORY=1  # Disable history for better performance
+      - OLLAMA_MODELS=/app/models  # Explicit model path
     networks:
       - cpu-models-internal
     volumes:
       - mistral-7b-models:/app/models
-    # Removed external port exposure for Ollama API
     deploy:
       resources:
         limits:
-          cpus: '3.0'           # INCREASED from 1.0 (3x more)
-          memory: 8G            # INCREASED from 2G (4x more)
+          cpus: '4.0'  # Increased from 3.0 to 4.0
+          memory: 10G  # Increased from 8G to 10G
         reservations:
-          cpus: '2.0'           # INCREASED from 0.5 (4x more)
-          memory: 6G            # INCREASED from 1G (6x more)
+          cpus: '3.0'  # Increased from 2.0 to 3.0
+          memory: 8G   # Increased from 6G to 8G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]  # Updated port
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 60s
-      timeout: 30s
+      timeout: 45s  # Increased from 30s to 45s
       retries: 3
-      start_period: 300s  # Longer startup time for model download
+      start_period: 600s  # Increased from 300s to 600s (10 minutes)
     logging:
       driver: "json-file"
       options:

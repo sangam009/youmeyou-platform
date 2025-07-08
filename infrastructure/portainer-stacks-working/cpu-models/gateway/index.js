@@ -91,8 +91,11 @@ app.post('/cpu-models/:model/:endpoint', async (req, res) => {
         const serviceUrl = `${SERVICES[model]}/${endpoint}`;
         console.log(`Routing request to: ${serviceUrl}`);
 
+        // Adjust timeout based on model complexity
+        const timeout = model === 'mistral-7b' ? 120000 : 30000; // 2 minutes for Mistral, 30s for others
+        
         const response = await axios.post(serviceUrl, req.body, {
-            timeout: 30000,
+            timeout: timeout,
             headers: {
                 'Content-Type': 'application/json'
             }
