@@ -35,6 +35,11 @@ declare -A SERVICES=(
     ["design"]="services/design-microservice"  
     ["payment"]="services/payment-microservice"
     ["codaloo-web"]="web"
+    ["cpu-models-gateway"]="infrastructure/portainer-stacks-working/cpu-models/gateway"
+    ["cpu-models-flan-t5"]="infrastructure/portainer-stacks-working/cpu-models/flan-t5"
+    ["cpu-models-distilbert"]="infrastructure/portainer-stacks-working/cpu-models/distilbert"
+    ["cpu-models-codebert"]="infrastructure/portainer-stacks-working/cpu-models/codebert"
+    ["cpu-models-mistral-7b"]="infrastructure/portainer-stacks-working/cpu-models/mistral-7b"
 )
 
 # Clean up previous builds
@@ -60,9 +65,11 @@ echo ${REGISTRY_PASS} | docker login ${REGISTRY_HOST} -u ${REGISTRY_USER} --pass
 for service in "${!SERVICES[@]}"; do
     service_path="${SERVICES[$service]}"
     
-    # Special naming for codaloo-web
+    # Special naming for different service types
     if [ "$service" = "codaloo-web" ]; then
         image_name="youmeyou/codaloo-web"
+    elif [[ "$service" == cpu-models-* ]]; then
+        image_name="youmeyou/${service}"
     else
         image_name="youmeyou/${service}-service"
     fi
