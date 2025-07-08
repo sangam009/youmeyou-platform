@@ -23,6 +23,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Service URLs
 const SERVICES = {
     'flan-t5': process.env.FLAN_T5_URL || 'http://flan-t5-service-prod:8001',
+    'mistral-7b': process.env.MISTRAL_7B_URL || 'http://mistral-7b-service-prod:8004',
     'distilbert': process.env.DISTILBERT_URL || 'http://distilbert-service-prod:8002',
     'codebert': process.env.CODEBERT_URL || 'http://codebert-service-prod:8003'
 };
@@ -38,6 +39,7 @@ app.get('/health', async (req, res) => {
     try {
         const healthChecks = await Promise.allSettled([
             checkServiceHealth('flan-t5'),
+            checkServiceHealth('mistral-7b'),
             checkServiceHealth('distilbert'),
             checkServiceHealth('codebert')
         ]);
@@ -169,6 +171,7 @@ app.get('/services', async (req, res) => {
     try {
         const serviceInfo = await Promise.allSettled([
             getServiceInfo('flan-t5'),
+            getServiceInfo('mistral-7b'),
             getServiceInfo('distilbert'),
             getServiceInfo('codebert')
         ]);

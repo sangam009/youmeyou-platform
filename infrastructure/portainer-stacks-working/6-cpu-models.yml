@@ -39,11 +39,13 @@ services:
     image: registry-staging.youmeyou.ai/youmeyou/cpu-models-gateway:latest
     container_name: cpu-models-gateway-prod
     restart: unless-stopped
+    ports:
+      - "7000:7000"  # Expose gateway port
     environment:
       - NODE_ENV=production
-      - PORT=8000
-      - FLAN_T5_URL=http://flan-t5-service-prod:8004
-      - MISTRAL_7B_URL=http://mistral-7b-service-prod:8001
+      - PORT=7000
+      - FLAN_T5_URL=http://flan-t5-service-prod:8001  # Standardized port
+      - MISTRAL_7B_URL=http://mistral-7b-service-prod:8004  # Changed to port 8004
       - DISTILBERT_URL=http://distilbert-service-prod:8002
       - CODEBERT_URL=http://codebert-service-prod:8003
     networks:
@@ -58,7 +60,7 @@ services:
           cpus: '0.2'
           memory: 256M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -76,7 +78,7 @@ services:
     restart: unless-stopped
     environment:
       - MODEL_NAME=google/flan-t5-small
-      - PORT=8004
+      - PORT=8001  # Standardized port
       - MAX_LENGTH=256
       - PYTHONUNBUFFERED=1
     networks:
@@ -92,7 +94,7 @@ services:
           cpus: '0.5'
           memory: 1G
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8004/health').raise_for_status()"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health').raise_for_status()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -176,9 +178,9 @@ services:
     restart: unless-stopped
     environment:
       - MODEL_NAME=mistral
-      - PORT=8001
+      - PORT=8004  # Changed from 8001 to 8004
       - PYTHONUNBUFFERED=1
-      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_HOST=localhost:11434  # Changed to localhost since port is internal
       - OLLAMA_NUM_PARALLEL=4
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_FLASH_ATTENTION=1
@@ -188,8 +190,7 @@ services:
       - cpu-models-internal
     volumes:
       - mistral-7b-models:/app/models
-    ports:
-      - "11434:11434"  # Ollama API port
+    # Removed external port exposure for Ollama API
     deploy:
       resources:
         limits:
@@ -199,7 +200,7 @@ services:
           cpus: '2.0'           # INCREASED from 0.5 (4x more)
           memory: 6G            # INCREASED from 1G (6x more)
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]  # Updated port
       interval: 60s
       timeout: 30s
       retries: 3
