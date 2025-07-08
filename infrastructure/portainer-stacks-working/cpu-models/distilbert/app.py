@@ -21,12 +21,35 @@ model_loaded = True  # Start with simple rule-based classification
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'model_loaded': model_loaded,
-        'model_name': os.getenv('MODEL_NAME', 'distilbert-base-uncased'),
-        'timestamp': time.time()
-    })
+    try:
+        # Perform basic model checks
+        if not model_loaded:
+            return jsonify({
+                'status': 'unhealthy',
+                'error': 'Model not loaded',
+                'model_name': os.getenv('MODEL_NAME', 'distilbert-base-uncased'),
+                'timestamp': time.time()
+            }), 503
+
+        # Test basic classification
+        test_result = analyze_complexity("test text")
+        if test_result < 0:
+            raise Exception("Model test failed")
+
+        return jsonify({
+            'status': 'healthy',
+            'model_loaded': model_loaded,
+            'model_name': os.getenv('MODEL_NAME', 'distilbert-base-uncased'),
+            'endpoints': ['/health', '/classify', '/info'],
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': time.time()
+        }), 503
 
 @app.route('/classify', methods=['POST'])
 def classify():

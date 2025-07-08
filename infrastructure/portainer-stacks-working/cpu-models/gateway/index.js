@@ -82,7 +82,7 @@ app.get('/services', async (req, res) => {
 // Route all requests to DistilBERT
 app.post('/route', async (req, res) => {
     try {
-        const serviceUrl = `${SERVICES['distilbert']}/generate`;
+        const serviceUrl = `${SERVICES['distilbert']}/classify`;  // Changed from /generate to /classify
         console.log(`Routing to DistilBERT for classification`);
         
         const response = await axios.post(serviceUrl, req.body, {
