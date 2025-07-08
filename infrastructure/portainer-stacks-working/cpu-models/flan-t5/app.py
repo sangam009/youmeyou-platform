@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
 FLAN-T5 Small Model Service
-Fast text generation for canvas merging and step planning
-Target: 400-500ms response time per iteration
+Supports multiple use cases:
+1. Canvas Element Merging - Structured JSON output
+2. Dynamic Prompt Generation - Context-aware prompts
+3. Documentation Generation - OpenAPI, DB, Code docs
+4. Mock Data Generation - Test data for APIs
 """
 
 import os
 import logging
 import time
+import json
 from flask import Flask, request, jsonify
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
@@ -23,10 +27,55 @@ model = None
 tokenizer = None
 model_loaded = False
 
-# Model configuration - Using FLAN-T5 Small as per architecture
+# Model configuration
 MODEL_NAME = "google/flan-t5-small"  # 308MB model for fast inference
 CACHE_DIR = "/app/models"
-MAX_LENGTH = int(os.getenv('MAX_LENGTH', 256))  # Shorter for faster response
+MAX_LENGTH = int(os.getenv('MAX_LENGTH', 512))
+
+# Task-specific configurations
+TASK_CONFIGS = {
+    'canvas_merge': {
+        'temperature': 0.3,
+        'min_length': 50,
+        'max_length': 1024,
+        'num_beams': 5,
+        'length_penalty': 1.0,
+        'do_sample': False,  # Deterministic for JSON
+        'repetition_penalty': 1.2
+    },
+    'prompt_generation': {
+        'temperature': 0.7,
+        'min_length': 30,
+        'max_length': 512,
+        'num_beams': 4,
+        'length_penalty': 1.1,
+        'do_sample': True,
+        'top_k': 50,
+        'top_p': 0.9,
+        'repetition_penalty': 1.3
+    },
+    'documentation': {
+        'temperature': 0.4,
+        'min_length': 100,
+        'max_length': 768,
+        'num_beams': 4,
+        'length_penalty': 1.2,
+        'do_sample': True,
+        'top_k': 40,
+        'top_p': 0.85,
+        'repetition_penalty': 1.3
+    },
+    'mock_data': {
+        'temperature': 0.8,  # Higher for more varied data
+        'min_length': 50,
+        'max_length': 512,
+        'num_beams': 3,
+        'do_sample': True,
+        'top_k': 50,
+        'top_p': 0.95,
+        'repetition_penalty': 1.1
+    }
+}
 
 def load_model():
     """Load FLAN-T5 Small model and tokenizer with proper compatibility"""
@@ -35,34 +84,26 @@ def load_model():
     try:
         logger.info(f"Loading FLAN-T5 Small model: {MODEL_NAME}")
         
-        # Set environment variables for better caching
         os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
         os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
         
-        # Load tokenizer and model with proper compatibility
-        # FLAN-T5 uses T5Tokenizer which is compatible with AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
             MODEL_NAME,
             cache_dir=CACHE_DIR,
             trust_remote_code=True
         )
         
-        # Load FLAN-T5 model for sequence-to-sequence tasks
-        # Remove device_map and low_cpu_mem_usage to avoid accelerate dependency
         model = AutoModelForSeq2SeqLM.from_pretrained(
             MODEL_NAME,
             cache_dir=CACHE_DIR,
-            torch_dtype=torch.float32  # Use float32 for better CPU performance
+            torch_dtype=torch.float32
         )
         
-        # Move model to CPU explicitly
         model = model.to('cpu')
         
-        # Ensure tokenizer compatibility
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         
-        # Optimize model for inference
         model.eval()
         
         model_loaded = True
@@ -81,13 +122,13 @@ def health():
         'model_loaded': model_loaded,
         'model_name': MODEL_NAME,
         'model_size': '308MB',
-        'target_latency': '400-500ms',
+        'supported_tasks': list(TASK_CONFIGS.keys()),
         'timestamp': time.time()
     })
 
 @app.route('/generate', methods=['POST'])
 def generate():
-    """Generate text using FLAN-T5 Small - optimized for canvas merging"""
+    """Generate text using FLAN-T5 Small with task-specific configurations"""
     if not model_loaded:
         return jsonify({
             'success': False,
@@ -102,51 +143,68 @@ def generate():
                 'error': 'Prompt is required'
             }), 400
         
-        prompt = data['prompt']
-        max_length = min(data.get('max_length', MAX_LENGTH), 512)  # Cap at 512 for speed
+        # Get task type and config
+        task_type = data.get('task_type', 'prompt_generation')
+        config = TASK_CONFIGS.get(task_type, TASK_CONFIGS['prompt_generation'])
         
-        logger.info(f"Generating text for prompt: {prompt[:50]}...")
+        prompt = data['prompt']
+        max_length = min(data.get('max_length', config['max_length']), 1024)
+        
+        logger.info(f"Generating {task_type} output for prompt: {prompt[:50]}...")
         
         start_time = time.time()
         
-        # Tokenize input with proper truncation
+        # Tokenize input
         inputs = tokenizer(
             prompt, 
             return_tensors="pt", 
-            max_length=256,  # Input limit for speed
+            max_length=512,
             truncation=True,
             padding=True
         )
         
-        # Generate with optimized settings for speed
+        # Generate with task-specific settings
         with torch.no_grad():
             outputs = model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
                 max_length=max_length,
-                min_length=10,
-                num_beams=2,  # Reduced beams for speed
+                min_length=config['min_length'],
+                num_beams=config['num_beams'],
+                length_penalty=config.get('length_penalty', 1.0),
                 early_stopping=True,
-                do_sample=False,  # Greedy decoding for speed
+                do_sample=config['do_sample'],
+                temperature=config['temperature'],
+                top_k=config.get('top_k', None),
+                top_p=config.get('top_p', None),
                 pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id
+                eos_token_id=tokenizer.eos_token_id,
+                repetition_penalty=config['repetition_penalty']
             )
         
         # Decode output
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Post-process based on task type
+        if task_type == 'canvas_merge':
+            try:
+                # Ensure valid JSON for canvas merging
+                generated_text = json.loads(generated_text)
+            except:
+                logger.warning("Failed to parse JSON, returning raw text")
+        
         generation_time = time.time() - start_time
         
-        logger.info(f"Generated text in {generation_time:.3f}s")
+        logger.info(f"Generated {task_type} output in {generation_time:.3f}s")
         
         return jsonify({
             'success': True,
             'data': {
                 'generated_text': generated_text,
-                'prompt': prompt,
+                'task_type': task_type,
                 'generation_time': round(generation_time, 3),
                 'model': MODEL_NAME,
-                'performance_target': '400-500ms',
-                'actual_performance': f"{generation_time*1000:.0f}ms"
+                'config_used': config
             }
         })
         
@@ -184,11 +242,14 @@ def merge_canvas():
         
         start_time = time.time()
         
+        # Use canvas_merge task configuration
+        config = TASK_CONFIGS['canvas_merge']
+        
         # Tokenize with canvas-optimized settings
         inputs = tokenizer(
             prompt, 
             return_tensors="pt", 
-            max_length=200,  # Shorter for canvas operations
+            max_length=512,
             truncation=True,
             padding=True
         )
@@ -198,15 +259,26 @@ def merge_canvas():
             outputs = model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
-                max_length=150,  # Shorter output for canvas merging
-                num_beams=1,     # Fastest generation
-                do_sample=False,
+                max_length=config['max_length'],
+                min_length=config['min_length'],
+                num_beams=config['num_beams'],
+                length_penalty=config['length_penalty'],
+                do_sample=config['do_sample'],
+                temperature=config['temperature'],
+                repetition_penalty=config['repetition_penalty'],
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id
             )
         
         # Decode output
         merged_result = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Try to parse as JSON
+        try:
+            merged_result = json.loads(merged_result)
+        except:
+            logger.warning("Failed to parse merged result as JSON")
+        
         generation_time = time.time() - start_time
         
         logger.info(f"Canvas merge completed in {generation_time:.3f}s")
@@ -218,7 +290,8 @@ def merge_canvas():
                 'original_canvas': canvas_data,
                 'merge_time': round(generation_time, 3),
                 'model': MODEL_NAME,
-                'operation': 'canvas_merge'
+                'operation': 'canvas_merge',
+                'config_used': config
             }
         })
         
@@ -247,19 +320,29 @@ def generate_steps():
             }), 400
         
         task = data['task']
+        plan_type = data.get('plan_type', 'general')  # Can be 'general', 'technical', 'design'
         
-        # Create step planning prompt
-        prompt = f"Create a step-by-step plan for: {task}\n\nSteps:\n1."
+        # Create step planning prompt based on plan type
+        prompt_templates = {
+            'general': f"Create a step-by-step plan for: {task}\n\nProvide a detailed breakdown with clear steps, estimated time, and key considerations.\n\nPlan:",
+            'technical': f"Create a technical implementation plan for: {task}\n\nInclude:\n1. Setup steps\n2. Development phases\n3. Testing requirements\n4. Deployment considerations\n\nDetailed Plan:",
+            'design': f"Create a design and implementation plan for: {task}\n\nCover:\n1. Design requirements\n2. UI/UX considerations\n3. Component breakdown\n4. Implementation steps\n\nPlan:"
+        }
         
-        logger.info("Generating step plan...")
+        prompt = prompt_templates.get(plan_type, prompt_templates['general'])
+        
+        logger.info(f"Generating {plan_type} plan...")
         
         start_time = time.time()
+        
+        # Use documentation config as base for detailed plans
+        config = TASK_CONFIGS['documentation']
         
         # Tokenize
         inputs = tokenizer(
             prompt, 
             return_tensors="pt", 
-            max_length=200,
+            max_length=512,
             truncation=True,
             padding=True
         )
@@ -269,9 +352,15 @@ def generate_steps():
             outputs = model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
-                max_length=200,
-                num_beams=2,
-                do_sample=False,
+                max_length=config['max_length'],
+                min_length=config['min_length'],
+                num_beams=config['num_beams'],
+                length_penalty=config['length_penalty'],
+                do_sample=config['do_sample'],
+                temperature=config['temperature'],
+                top_k=config['top_k'],
+                top_p=config['top_p'],
+                repetition_penalty=config['repetition_penalty'],
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id
             )
@@ -287,9 +376,11 @@ def generate_steps():
             'data': {
                 'steps': steps,
                 'task': task,
+                'plan_type': plan_type,
                 'generation_time': round(generation_time, 3),
                 'model': MODEL_NAME,
-                'operation': 'step_planning'
+                'operation': 'step_planning',
+                'config_used': config
             }
         })
         
@@ -309,30 +400,25 @@ def info():
         'model_size': '308MB',
         'model_loaded': model_loaded,
         'capabilities': [
-            'text-generation', 
-            'canvas-merging', 
+            'text-generation',
+            'canvas-merging',
             'step-planning',
-            'question-answering',
-            'summarization'
+            'documentation-generation',
+            'mock-data-generation',
+            'prompt-generation'
         ],
-        'performance_target': '400-500ms',
-        'max_length': MAX_LENGTH,
+        'supported_tasks': list(TASK_CONFIGS.keys()),
+        'endpoints': {
+            '/generate': 'General-purpose generation with task-specific configs',
+            '/merge': 'Specialized canvas element merging',
+            '/plan': 'Step-by-step planning with different plan types',
+            '/info': 'Model information and capabilities'
+        },
         'device': 'cpu',
-        'use_cases': [
-            'Canvas merging operations',
-            'Step-by-step planning',
-            'Fast text generation',
-            'Context integration'
-        ]
+        'max_length': MAX_LENGTH,
+        'task_configs': TASK_CONFIGS
     })
 
 if __name__ == '__main__':
-    logger.info("Starting FLAN-T5 Small service...")
-    
-    # Load model on startup
     load_model()
-    
-    # Start Flask app
-    port = int(os.getenv('PORT', 8004))  # Using port 8004 for FLAN-T5
-    logger.info(f"FLAN-T5 service starting on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8001))) 
