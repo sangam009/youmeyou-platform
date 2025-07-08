@@ -231,28 +231,31 @@ export class LLMAgent {
         keyType: this.isSecondary ? 'secondary' : 'primary',
         model: 'models/gemini-1.5-flash',
         promptLength: prompt.length,
-        promptPreview: prompt.substring(0, 100) + '...'
+        prompt: prompt // Log full prompt
       });
 
       const startTime = Date.now();
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
+      const responseText = response.text();
 
       const duration = Date.now() - startTime;
       logger.info('📥 [LLM RESPONSE] Received response from Gemini model:', {
         callId: requestId,
         keyType: this.isSecondary ? 'secondary' : 'primary',
         duration: `${duration}ms`,
-        responseLength: response.text().length
+        responseLength: responseText.length,
+        response: responseText // Log full response
       });
 
-      return response;
+      return { content: responseText };
 
     } catch (error) {
       logger.error('❌ [LLM ERROR] Error executing LLM request:', {
         callId: requestId,
         keyType: this.isSecondary ? 'secondary' : 'primary',
-        error: error.message
+        error: error.message,
+        prompt: prompt // Log full prompt on error
       });
       throw error;
     }
