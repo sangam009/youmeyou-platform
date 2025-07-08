@@ -36,10 +36,7 @@ declare -A SERVICES=(
     ["payment"]="services/payment-microservice"
     ["codaloo-web"]="web"
     ["cpu-models-gateway"]="infrastructure/portainer-stacks-working/cpu-models/gateway"
-    ["cpu-models-flan-t5"]="infrastructure/portainer-stacks-working/cpu-models/flan-t5"
     ["cpu-models-distilbert"]="infrastructure/portainer-stacks-working/cpu-models/distilbert"
-    ["cpu-models-codebert"]="infrastructure/portainer-stacks-working/cpu-models/codebert"
-    ["cpu-models-mistral-7b"]="infrastructure/portainer-stacks-working/cpu-models/mistral-7b"
 )
 
 # Clean up previous builds
