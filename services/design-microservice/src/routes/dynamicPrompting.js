@@ -30,11 +30,44 @@ const validatePrompt = [
  */
 router.post('/analyze', auth, validatePrompt, async (req, res) => {
   try {
-    const { prompt, context } = req.body;
-    const result = await dynamicPromptingService.analyzePrompt(prompt, context);
-    res.json(result);
+    const { prompt, context, streaming = false } = req.body;
+
+    // Set up streaming if requested
+    if (streaming) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      // Send initial message
+      res.write('data: ' + JSON.stringify({ type: 'start', message: 'Starting analysis...' }) + '\n\n');
+
+      // Create streaming callback
+      const streamingCallback = (data) => {
+        res.write('data: ' + JSON.stringify(data) + '\n\n');
+      };
+
+      // Execute with streaming
+      const result = await dynamicPromptingService.analyzePrompt(prompt, {
+        ...context,
+        streamingEnabled: true,
+        streamingCallback
+      });
+
+      // Send completion message
+      res.write('data: ' + JSON.stringify({ type: 'end', result }) + '\n\n');
+      res.end();
+    } else {
+      // Regular non-streaming response
+      const result = await dynamicPromptingService.analyzePrompt(prompt, context);
+      res.json(result);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Failed to analyze prompt' });
+    if (req.body.streaming) {
+      res.write('data: ' + JSON.stringify({ type: 'error', error: error.message }) + '\n\n');
+      res.end();
+    } else {
+      res.status(500).json({ error: 'Failed to analyze prompt' });
+    }
   }
 });
 

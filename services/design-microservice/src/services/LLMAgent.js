@@ -231,31 +231,57 @@ export class LLMAgent {
         keyType: this.isSecondary ? 'secondary' : 'primary',
         model: 'models/gemini-1.5-flash',
         promptLength: prompt.length,
-        prompt: prompt // Log full prompt
+        prompt: prompt
       });
 
       const startTime = Date.now();
+
+      // Handle streaming if enabled
+      if (options.streamingEnabled && options.streamingCallback) {
+        const result = await this.model.generateContentStream(prompt);
+        let fullResponse = '';
+        
+        for await (const chunk of result.stream) {
+          const chunkText = chunk.text();
+          fullResponse += chunkText;
+          
+          // Send chunk to streaming callback
+          options.streamingCallback({
+            type: 'chunk',
+            content: chunkText,
+            requestId,
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        const endTime = Date.now();
+        logger.info('📥 [LLM RESPONSE] Received streaming response:', {
+          callId: requestId,
+          duration: endTime - startTime,
+          responseLength: fullResponse.length
+        });
+
+        return { content: fullResponse };
+      }
+
+      // Non-streaming request
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const responseText = response.text();
+      const endTime = Date.now();
 
-      const duration = Date.now() - startTime;
-      logger.info('📥 [LLM RESPONSE] Received response from Gemini model:', {
+      logger.info('📥 [LLM RESPONSE] Received response:', {
         callId: requestId,
-        keyType: this.isSecondary ? 'secondary' : 'primary',
-        duration: `${duration}ms`,
-        responseLength: responseText.length,
-        response: responseText // Log full response
+        duration: endTime - startTime,
+        responseLength: response.text().length
       });
 
-      return { content: responseText };
+      return { content: response.text() };
 
     } catch (error) {
-      logger.error('❌ [LLM ERROR] Error executing LLM request:', {
+      logger.error('❌ [LLM ERROR] Failed to execute request:', {
         callId: requestId,
-        keyType: this.isSecondary ? 'secondary' : 'primary',
         error: error.message,
-        prompt: prompt // Log full prompt on error
+        prompt: prompt
       });
       throw error;
     }

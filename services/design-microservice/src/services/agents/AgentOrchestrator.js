@@ -221,6 +221,27 @@ export class AgentOrchestrator {
     try {
       logger.info('🤖 Starting intelligent agent selection for:', userQuery.substring(0, 100) + '...');
 
+      // Check for casual conversation first
+      if (analysis.primaryIntent === 'casual_conversation') {
+        logger.info('👋 Selected CasualConversationAgent for casual chat:', {
+          intent: 'casual_conversation',
+          confidence: analysis.confidence || 0.6
+        });
+        
+        return {
+          selectedAgents: ['casualConversation'],
+          agentAnalysis: {
+            ...analysis,
+            complexity: 0.3,
+            confidence: analysis.confidence || 0.6,
+            source: 'intent-classification'
+          },
+          routingStrategy: 'simple',
+          recommendedModel: 'distilbert',
+          conversationStyle: 'friendly'
+        };
+      }
+
       // If we already have recommended agents from enhanced analysis, use them
       if (analysis.recommendedAgents && analysis.recommendedAgents.length > 0) {
         logger.info('✅ Using pre-analyzed agent recommendations:', {
@@ -253,6 +274,28 @@ export class AgentOrchestrator {
       
       // Analyze with DistilBERT
       const agentAnalysis = await analyzer.analyzeComplexity(agentSelectionPrompt);
+
+      // Check for casual conversation again based on DistilBERT analysis
+      if (agentAnalysis.type === 'conversation' || agentAnalysis.complexity < 0.3 || this.hasCasualIndicators(userQuery)) {
+        logger.info('👋 Selected CasualConversationAgent based on analysis:', {
+          type: agentAnalysis.type,
+          complexity: agentAnalysis.complexity,
+          hasCasualIndicators: this.hasCasualIndicators(userQuery)
+        });
+        
+        return {
+          selectedAgents: ['casualConversation'],
+          agentAnalysis: {
+            ...agentAnalysis,
+            complexity: 0.3,
+            confidence: 0.6,
+            source: 'distilbert-analysis'
+          },
+          routingStrategy: 'simple',
+          recommendedModel: 'distilbert',
+          conversationStyle: 'friendly'
+        };
+      }
       
       // Get recommended agents with confidence scores
       const selectedAgents = agentAnalysis.recommendedAgents || ['projectManager'];
@@ -297,6 +340,21 @@ export class AgentOrchestrator {
    * Fallback agent selection
    */
   fallbackAgentSelection(analysis) {
+    // Check for casual conversation even in fallback
+    if (analysis.primaryIntent === 'casual_conversation' || this.hasCasualIndicators(analysis.userQuery || '')) {
+      return {
+        selectedAgents: ['casualConversation'],
+        agentAnalysis: {
+          complexity: 0.3,
+          confidence: 0.4,
+          source: 'fallback-casual'
+        },
+        routingStrategy: 'simple',
+        recommendedModel: 'distilbert',
+        conversationStyle: 'friendly'
+      };
+    }
+
     return {
       selectedAgents: ['projectManager'],
       agentAnalysis: {

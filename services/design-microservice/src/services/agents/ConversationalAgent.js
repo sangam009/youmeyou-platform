@@ -148,6 +148,19 @@ export class ConversationalAgent {
   }
 
   /**
+   * Stream progress updates to client
+   */
+  streamProgress(progressData, context) {
+    if (context.streamingCallback) {
+      context.streamingCallback({
+        ...progressData,
+        agent: this.agentName,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  /**
    * Execute with streaming support for real-time updates
    */
   async executeWithStreaming(userQuery, context = {}) {
@@ -166,195 +179,56 @@ export class ConversationalAgent {
       // Stream initial status
       this.streamProgress({
         type: 'agent_start',
-        agent: this.agentName,
-        specialization: this.specialization,
         status: `Starting ${this.agentName} conversation...`,
-        completionScore: 0,
-        timestamp: new Date().toISOString()
+        completionScore: 0
       }, context);
 
-      // Start natural conversation loop with streaming
-      while (conversationState.completionScore < this.completionThreshold && 
-             conversationState.conversationTurns < this.maxConversationTurns) {
-        
-        conversationState.conversationTurns++;
-        
-        // Stream conversation turn start
-        this.streamProgress({
-          type: 'conversation_turn',
-          agent: this.agentName,
-          status: `Conversation turn ${conversationState.conversationTurns}/${this.maxConversationTurns}`,
-          completionScore: Math.round((conversationState.conversationTurns / this.maxConversationTurns) * 30),
-          turn: conversationState.conversationTurns,
-          timestamp: new Date().toISOString()
-        }, context);
-        
-        // Generate next prompt based on current progress
-        const nextPrompt = await this.generateNextPrompt(conversationState, context);
-        
-        // Log the generated prompt for this streaming conversation turn
-        logger.info(`📝 [CONVERSATIONAL AGENT STREAMING] Generated prompt for turn ${conversationState.conversationTurns}:`, {
-          agentName: this.agentName,
-          turn: conversationState.conversationTurns,
-          promptLength: nextPrompt.length,
-          fullPrompt: nextPrompt
-        });
-        
-        // Stream LLM collaboration start
-        this.streamProgress({
-          type: 'llm_collaboration',
-          agent: this.agentName,
-          status: `Collaborating with LLM for ${this.specialization} expertise...`,
-          completionScore: Math.round((conversationState.conversationTurns / this.maxConversationTurns) * 30) + 10,
-          timestamp: new Date().toISOString()
-        }, context);
-        
-        // Converse with LLM
-        let llmResponse;
-        if (conversationState.conversationTurns === 1) {
-          // First conversation
-          logger.info(`🤝 [CONVERSATIONAL AGENT STREAMING] Starting first collaboration with LLM for ${this.agentName}`);
-          llmResponse = await this.llmAgent.collaborateWithAgent(
-            this.agentName,
-            nextPrompt,
-            context
-          );
-        } else {
-          // Continue conversation
-          logger.info(`💬 [CONVERSATIONAL AGENT STREAMING] Continuing conversation turn ${conversationState.conversationTurns} for ${this.agentName}`);
-          llmResponse = await this.llmAgent.continueConversation(
-            this.agentName,
-            nextPrompt,
-            { ...context, conversationState }
-          );
-        }
-        
-        // Log the LLM response for this streaming conversation turn
-        logger.info(`📄 [CONVERSATIONAL AGENT STREAMING] Received LLM response for turn ${conversationState.conversationTurns}:`, {
-          agentName: this.agentName,
-          turn: conversationState.conversationTurns,
-          responseLength: llmResponse.response?.length || 0,
-          fullResponse: llmResponse.response || llmResponse.content || 'No response content'
-        });
+      // Generate initial prompt
+      const prompt = await this.generateNextPrompt(conversationState, context);
 
-        // Stream LLM response received
-        this.streamProgress({
-          type: 'llm_response',
-          agent: this.agentName,
-          status: `Received LLM response, analyzing progress...`,
-          completionScore: Math.round((conversationState.conversationTurns / this.maxConversationTurns) * 30) + 20,
-          responsePreview: llmResponse.response.substring(0, 150) + '...',
-          timestamp: new Date().toISOString()
-        }, context);
-
-        // Extract and validate any actions from LLM response
-        const actions = await this.extractActions(llmResponse.response);
-        if (actions.length > 0) {
-          await this.executeActions(actions, context);
-        }
-
-        // Analyze LLM response and update progress
-        const progressAnalysis = await this.analyzeProgress(
-          llmResponse, 
-          conversationState, 
-          context
-        );
-        
-        conversationState.completionScore = progressAnalysis.completionScore;
-        conversationState.taskProgress.push({
-          turn: conversationState.conversationTurns,
-          prompt: nextPrompt,
-          response: llmResponse.response,
-          completionScore: progressAnalysis.completionScore,
-          missingElements: progressAnalysis.missingElements,
-          actions: actions,
-          timestamp: new Date().toISOString()
-        });
-
-        // Stream progress update
-        this.streamProgress({
-          type: 'progress_update',
-          agent: this.agentName,
-          status: `Progress: ${Math.round(progressAnalysis.completionScore * 100)}% complete`,
-          completionScore: Math.round(progressAnalysis.completionScore * 100),
-          turn: conversationState.conversationTurns,
-          missingElements: progressAnalysis.missingElements,
-          timestamp: new Date().toISOString()
-        }, context);
-        
-        // Check if task is sufficiently complete
-        if (progressAnalysis.completionScore >= this.completionThreshold) {
+      // Execute LLM request with streaming
+      const response = await this.llmAgent.execute(prompt, {
+        ...context,
+        streamingEnabled: true,
+        streamingCallback: (chunk) => {
           this.streamProgress({
-            type: 'task_complete',
-            agent: this.agentName,
-            status: `Task completed! (${Math.round(progressAnalysis.completionScore * 100)}%)`,
-            completionScore: Math.round(progressAnalysis.completionScore * 100),
-            timestamp: new Date().toISOString()
+            type: 'llm_chunk',
+            content: chunk.content,
+            completionScore: Math.min(100, conversationState.completionScore + 10)
           }, context);
-          
-          conversationState.finalResult = llmResponse;
-          break;
         }
+      });
 
-        // Brief pause between conversation turns (prevent overwhelming LLM)
-        await this.sleep(500);
-      }
-
-      // Stream final compilation
-      this.streamProgress({
-        type: 'final_compilation',
-        agent: this.agentName,
-        status: 'Compiling final response...',
-        completionScore: 95,
-        timestamp: new Date().toISOString()
-      }, context);
-
-      // Compile final response
-      const finalResponse = this.compileFinalResponse(conversationState, context);
-      
       // Stream completion
       this.streamProgress({
         type: 'agent_complete',
-        agent: this.agentName,
-        status: `${this.agentName} completed successfully!`,
+        status: 'Conversation complete',
         completionScore: 100,
-        conversationTurns: conversationState.conversationTurns,
-        timestamp: new Date().toISOString()
+        finalResponse: response.content
       }, context);
 
-      return finalResponse;
+      return {
+        content: response.content,
+        type: 'streaming_conversation',
+        metadata: {
+          agentName: this.agentName,
+          completionScore: 100,
+          timestamp: new Date().toISOString()
+        }
+      };
 
     } catch (error) {
       logger.error(`❌ ${this.agentName} streaming execution error:`, error);
       
-      // Stream error
+      // Stream error status
       this.streamProgress({
         type: 'agent_error',
-        agent: this.agentName,
-        status: `Error: ${error.message}`,
-        error: error.message,
-        timestamp: new Date().toISOString()
+        status: 'Error in conversation',
+        error: error.message
       }, context);
       
       return this.getFallbackResponse(userQuery, error);
     }
-  }
-
-  /**
-   * Stream progress updates to client
-   */
-  streamProgress(progressData, context) {
-    if (context.streamingCallback) {
-      try {
-        context.streamingCallback(progressData);
-        logger.info(`📡 ${this.agentName} Streaming sent: ${progressData.type} - ${progressData.status}`);
-      } catch (error) {
-        logger.error(`❌ ${this.agentName} Error in streaming callback:`, error);
-      }
-    } else {
-      logger.warn(`⚠️ ${this.agentName} No streaming callback available in context`);
-    }
-    logger.info(`📡 ${this.agentName} Streaming: ${progressData.type} - ${progressData.status}`);
   }
 
   /**
