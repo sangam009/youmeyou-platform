@@ -89,10 +89,10 @@ CONTEXT:
 ${JSON.stringify(context, null, 2)}
 
 REQUIREMENTS:
-${promptInstructions.requirements.join('\\n')}
+${promptInstructions.requirements.join('\n')}
 
 CONSTRAINTS:
-${promptInstructions.constraints.join('\\n')}
+${promptInstructions.constraints.join('\n')}
 
 The generated prompt should:
 1. Be highly specific to the context provided
@@ -103,16 +103,16 @@ The generated prompt should:
 
 Please generate a prompt that fulfills these requirements while being dynamic and contextually relevant.`;
 
-      const response = await this.llmAgent.generateText([
+      const response = await this.llmAgent.execute([
         { role: 'system', content: systemMessage },
         { role: 'user', content: userMessage }
       ]);
 
-      if (!response) {
+      if (!response || !response.content) {
         throw new Error('Failed to generate prompt with Gemini');
       }
 
-      return response.trim();
+      return response.content.trim();
 
     } catch (error) {
       logger.error('❌ [GEMINI PROMPT GENERATION] Failed to generate prompt:', error);

@@ -8,42 +8,69 @@ import { apiMonitor } from '../../utils/apiMonitor.js';
 export class DistilBERTComplexityAnalyzer {
   constructor() {
     // Use the existing CPU models gateway that's already deployed
-    this.gatewayEndpoint = process.env.CPU_MODELS_GATEWAY || 'http://cpu-models-gateway-prod:8000';
+    this.gatewayEndpoint = process.env.CPU_MODELS_GATEWAY || 'http://cpu-models-gateway-prod:7000';
     this.isInitialized = false;
     this.requestCount = 0;
     this.successCount = 0;
     this.fallbackCount = 0;
+    this.initRetries = 0;
+    this.maxRetries = 3;
+    this.retryDelay = 2000; // 2 seconds
     
-    logger.info('🧠 DistilBERTComplexityAnalyzer connecting to existing CPU models gateway:', {
+    logger.info('🧠 DistilBERTComplexityAnalyzer connecting to CPU models gateway:', {
       endpoint: this.gatewayEndpoint
     });
     this.initializeModel();
   }
 
   async initializeModel() {
-    try {
-      logger.info('🔍 Checking CPU models gateway availability...');
-      
-      // Check if the CPU models gateway is available
-      const response = await fetch(`${this.gatewayEndpoint}/health`);
-      if (response.ok) {
-        this.isInitialized = true;
-        logger.info('✅ CPU models gateway connected successfully:', {
-          endpoint: this.gatewayEndpoint,
-          status: response.status
+    while (this.initRetries < this.maxRetries) {
+      try {
+        logger.info('🔍 Checking CPU models gateway availability:', {
+          attempt: this.initRetries + 1,
+          maxRetries: this.maxRetries
         });
-      } else {
-        logger.warn('⚠️ CPU models gateway not available, will use fallback:', {
+        
+        // Check if the CPU models gateway is available
+        const response = await fetch(`${this.gatewayEndpoint}/health`);
+        if (response.ok) {
+          const status = await response.json();
+          
+          // Verify DistilBERT service is available
+          if (status.services?.distilbert?.status === 'healthy') {
+            this.isInitialized = true;
+            logger.info('✅ CPU models gateway connected successfully:', {
+              endpoint: this.gatewayEndpoint,
+              status: response.status,
+              services: status.services
+            });
+            return;
+          } else {
+            throw new Error('DistilBERT service not healthy');
+          }
+        } else {
+          throw new Error(`Gateway returned status ${response.status}`);
+        }
+      } catch (error) {
+        this.initRetries++;
+        logger.warn('⚠️ CPU models gateway connection failed:', {
           endpoint: this.gatewayEndpoint,
-          status: response.status
+          error: error.message,
+          attempt: this.initRetries,
+          maxRetries: this.maxRetries
         });
+        
+        if (this.initRetries < this.maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+          this.retryDelay *= 2; // Exponential backoff
+        }
       }
-    } catch (error) {
-      logger.warn('⚠️ CPU models gateway not reachable, using fallback analysis:', {
-        endpoint: this.gatewayEndpoint,
-        error: error.message
-      });
     }
+    
+    logger.warn('⚠️ CPU models gateway not available after retries, will use fallback:', {
+      endpoint: this.gatewayEndpoint,
+      attempts: this.initRetries
+    });
   }
 
   /**
@@ -52,6 +79,7 @@ export class DistilBERTComplexityAnalyzer {
   async analyzeComplexity(prompt) {
     this.requestCount++;
     const requestId = `cpu-complexity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requestStart = Date.now();
     
     logger.info('🧠 [CPU REQUEST] Starting complexity analysis:', {
       requestId,
@@ -86,7 +114,7 @@ export class DistilBERTComplexityAnalyzer {
     try {
       logger.info('🧠 [CPU REQUEST] Analyzing complexity with DistilBERT CPU model:', {
         requestId,
-        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
+        endpoint: `${this.gatewayEndpoint}/route`,
         requestPayload: {
           textLength: prompt.length,
           textPreview: prompt.substring(0, 100) + '...'
@@ -100,14 +128,14 @@ export class DistilBERTComplexityAnalyzer {
         promptLength: prompt.length
       });
       
-      const requestStart = Date.now();
-      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/classify`, {
+      const response = await fetch(`${this.gatewayEndpoint}/route`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: prompt
+          text: prompt,
+          task: 'complexity_analysis'
         })
       });
 
@@ -130,7 +158,7 @@ export class DistilBERTComplexityAnalyzer {
       // Track successful call
       apiMonitor.trackCPUCall({
         requestId,
-        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
+        endpoint: `${this.gatewayEndpoint}/route`,
         requestType: 'complexity_analysis',
         success: true,
         responseTime: requestTime
@@ -184,7 +212,7 @@ export class DistilBERTComplexityAnalyzer {
       // Track failed call
       apiMonitor.trackCPUCall({
         requestId,
-        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/classify`,
+        endpoint: `${this.gatewayEndpoint}/route`,
         requestType: 'complexity_analysis',
         success: false,
         error: error.message,
@@ -231,7 +259,7 @@ export class DistilBERTComplexityAnalyzer {
     try {
       logger.info('🎯 [CPU REQUEST] Classifying intent with DistilBERT CPU model:', {
         requestId,
-        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/intent`
+        endpoint: `${this.gatewayEndpoint}/route`
       });
 
       // Log the complete prompt being sent for intent classification
@@ -242,14 +270,14 @@ export class DistilBERTComplexityAnalyzer {
       });
 
       const requestStart = Date.now();
-      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/intent`, {
+      const response = await fetch(`${this.gatewayEndpoint}/route`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: prompt,
-          classification_type: 'intent_detection'
+          task: 'intent_classification'
         })
       });
 
@@ -334,18 +362,18 @@ export class DistilBERTComplexityAnalyzer {
     try {
       logger.info('🔧 [CPU REQUEST] Analyzing domains with DistilBERT CPU model:', {
         requestId,
-        endpoint: `${this.gatewayEndpoint}/cpu-models/distilbert/domains`
+        endpoint: `${this.gatewayEndpoint}/route`
       });
 
       const requestStart = Date.now();
-      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/domains`, {
+      const response = await fetch(`${this.gatewayEndpoint}/route`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: prompt,
-          analysis_type: 'domain_classification'
+          task: 'domain_classification'
         })
       });
 
@@ -575,12 +603,12 @@ export class DistilBERTComplexityAnalyzer {
    */
   async analyzeTaskRequirements(task) {
     try {
-      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/analyze`, {
+      const response = await fetch(`${this.gatewayEndpoint}/route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: task,
-          analysis_type: 'task_requirements'
+          task: 'analyze_task_requirements'
         })
       });
 
@@ -608,12 +636,13 @@ export class DistilBERTComplexityAnalyzer {
    */
   async matchCapabilities(required, available) {
     try {
-      const response = await fetch(`${this.gatewayEndpoint}/cpu-models/distilbert/similarity`, {
+      const response = await fetch(`${this.gatewayEndpoint}/route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source_texts: required,
-          target_texts: available
+          target_texts: available,
+          task: 'similarity'
         })
       });
 

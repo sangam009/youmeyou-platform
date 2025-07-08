@@ -248,122 +248,83 @@ export class ProjectManagerAgent extends ConversationalAgent {
     const { userId, projectId } = context;
     
     if (!userId || !projectId) {
-      throw new Error('userId and projectId are required for ProjectManager execution');
+      throw new Error('userId and projectId are required for streaming execution');
     }
 
-    const streamingContext = {
-      ...context,
-      streamingEnabled: true,
-      agentName: this.agentName,
-      specialization: this.specialization
-    };
-
-    // Get conversation context from VectorDB
-    const conversationContext = await vectorDB.getConversationContext(userId, projectId, 5);
-    logger.info(`📚 Retrieved ${conversationContext.length} conversation turns from VectorDB`);
-
-    // Stream initial status
-    this.streamProgress({
-      type: 'agent_start',
-      agent: this.agentName,
-      status: 'Starting LLM-driven task analysis...',
-      completionScore: 0,
-      timestamp: new Date().toISOString()
-    }, context);
-
     try {
-      // Step 1: Generate dynamic task analysis prompt
+      // Get conversation context
+      const conversationContext = await vectorDB.getConversationContext(userId, projectId, 5);
+      logger.info('📚 Retrieved conversation context for user', userId, 'and project', projectId);
+      logger.info('📚 Retrieved', conversationContext.length, 'conversation turns from VectorDB');
+
+      // Stream agent start
+      if (context.streamingCallback) {
+        context.streamingCallback({
+          type: 'agent_start',
+          agent: this.agentName,
+          status: 'Starting LLM-driven task analysis...',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Generate dynamic prompt
       const { DynamicPromptGenerationService } = await import('../DynamicPromptGenerationService.js');
       const promptGenerator = new DynamicPromptGenerationService();
       
-      const taskPrompt = await promptGenerator.getTaskAnalysisPrompt(userQuery, {
+      const prompt = await promptGenerator.generatePrompt('task_analysis', {
+        userQuery,
+        conversationContext,
         agentName: this.agentName,
-        complexity: context.complexity || 'medium',
-        domain: context.domain || 'software_development',
-        userLevel: context.userLevel || 'intermediate'
+        agentRole: this.agentRole,
+        projectContext: {
+          projectId,
+          userId,
+          conversationHistory: conversationContext
+        }
       });
 
-      const { LLMAgent } = await import('./LLMAgent.js');
-      const llmAgent = LLMAgent.getInstance();
-      
-      // Stream analysis status
-      this.streamProgress({
-        type: 'task_analysis',
-        agent: this.agentName,
-        status: 'Analyzing task requirements...',
-        completionScore: 20,
-        timestamp: new Date().toISOString()
-      }, context);
-
-      const llmResponse = await llmAgent.collaborateWithAgent(
-        this.agentName,
-        taskPrompt,
-        streamingContext
-      );
-
-      // Store conversation in VectorDB
-      await vectorDB.storeConversationTurn(userId, projectId, {
-        turnNumber: 1,
-        userMessage: userQuery,
-        agentResponse: llmResponse.response,
-        agentName: this.agentName,
-        completionScore: 0.8,
-        context: { conversationContext },
-        timestamp: new Date().toISOString()
+      // Execute with streaming
+      const response = await this.llmAgent.execute(prompt, {
+        ...context,
+        streaming: true,
+        onToken: (token) => {
+          if (context.streamingCallback) {
+            context.streamingCallback({
+              type: 'token',
+              content: token,
+              agent: this.agentName,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
       });
 
       // Stream completion
-      this.streamProgress({
-        type: 'agent_complete',
-        agent: this.agentName,
-        status: 'Analysis completed successfully',
-        completionScore: 100,
-        timestamp: new Date().toISOString()
-      }, context);
+      if (context.streamingCallback) {
+        context.streamingCallback({
+          type: 'agent_complete',
+          agent: this.agentName,
+          status: 'Task analysis complete',
+          timestamp: new Date().toISOString()
+        });
+      }
 
-      // Return structured response
-      return {
-        agentId: 'project-manager',
-        agentName: this.agentName,
-        response: {
-          content: llmResponse.response,
-          analysis: userQuery,
-          suggestions: llmResponse.nextSteps || []
-        },
-        executedAt: new Date(),
-        metadata: {
-          complexity: 0.5,
-          executionType: 'simple'
-        }
-      };
+      return response;
 
     } catch (error) {
       logger.error('❌ Error in ProjectManager streaming execution:', error);
       
-      // Stream error status
-      this.streamProgress({
-        type: 'error',
-        agent: this.agentName,
-        status: `Error: ${error.message}`,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      }, context);
-
-      // Return error response
-      return {
-        agentId: 'project-manager',
-        agentName: this.agentName,
-        response: {
-          content: 'I apologize, but I encountered an error while processing your request. Please try again.',
-          analysis: 'Error occurred during processing',
-          suggestions: ['Try rephrasing your request', 'Break down the task into smaller parts']
-        },
-        executedAt: new Date(),
-        metadata: {
-          error: error.message,
-          executionType: 'error'
-        }
-      };
+      // Stream error
+      if (context.streamingCallback) {
+        context.streamingCallback({
+          type: 'error',
+          agent: this.agentName,
+          status: `Error: ${error.message}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      throw error;
     }
   }
 
