@@ -42,11 +42,26 @@ app.use((req, res, next) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+    // Check DistilBERT health
+    let distilbertHealth = 'unhealthy';
+    try {
+        const response = await axios.get(`${SERVICES['distilbert']}/health`, { timeout: 5000 });
+        if (response.status === 200) {
+            distilbertHealth = 'healthy';
+        }
+    } catch (error) {
+        console.error('DistilBERT health check failed:', error.message);
+    }
+
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        services: Object.keys(SERVICES),
+        services: {
+            distilbert: {
+                status: distilbertHealth
+            }
+        },
         version: '3.0.0'
     });
 });
