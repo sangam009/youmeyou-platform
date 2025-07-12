@@ -4,12 +4,6 @@ import cookieParser from 'cookie-parser';
 import { config } from './config/index.js';
 import logger from './utils/logger.js';
 
-// Import A2A SDK components for server implementation
-import { A2AExpressApp, DefaultRequestHandler, InMemoryTaskStore } from '@a2a-js/sdk';
-
-// Import our agent executors
-import { DesignAgentExecutor } from './services/agents/DesignAgentExecutor.js';
-
 // Import routes (for non-A2A endpoints)
 import workspaceRoutes from './routes/workspaces.js';
 import projectRoutes from './routes/projects.js';
@@ -20,11 +14,6 @@ import simpleChatRoutes from './routes/simpleChat.js';
 
 // Import middleware
 import authMiddleware from './middleware/auth.js';
-
-// Import services that need initialization
-import { vectorDB } from './services/VectorDBService.js';
-import a2aService from './services/a2aService.js';
-import { LLMAgent } from './services/LLMAgent.js';
 
 const app = express();
 
@@ -152,33 +141,8 @@ app.get('/.well-known/agent.json', (req, res) => {
   res.json(DESIGN_AGENT_CARD);
 });
 
-// Initialize A2A Server Components
-const taskStore = new InMemoryTaskStore();
-const designAgentExecutor = new DesignAgentExecutor();
-
-const requestHandler = new DefaultRequestHandler(
-  DESIGN_AGENT_CARD,
-  taskStore,
-  designAgentExecutor
-);
-
-// Setup A2A routes using the SDK
-try {
-  const a2aApp = new A2AExpressApp(requestHandler);
-
-  // Add optional authentication for A2A routes in production
-  if (config.environment === 'production') {
-    logger.info('🔒 Adding authentication to A2A routes in production');
-    a2aApp.setupRoutes(app, '/a2a', authMiddleware);
-  } else {
-    logger.info('🔓 A2A routes running without authentication in development/staging');
-    a2aApp.setupRoutes(app, '/a2a');
-  }
-
-  logger.info('🚀 A2A Server routes configured successfully');
-} catch (error) {
-  logger.error('❌ Failed to setup A2A routes:', error);
-}
+// A2A functionality has been moved to simple chat API
+logger.info('🚀 Simple Chat API is now the primary interface for AI interactions');
 
 // Traditional REST API routes (for backward compatibility)
 app.use('/api/workspaces', authMiddleware, workspaceRoutes);
@@ -221,19 +185,8 @@ async function initializeServices() {
   logger.info('🔧 Initializing services...');
   
   try {
-    // Initialize VectorDB collections
-    logger.info('🔧 Initializing VectorDB collections...');
-    await vectorDB.initializeCollections();
-    
-    // Initialize A2A Service
-    logger.info('🚀 Initializing A2A Service...');
-    // a2aService is already initialized when imported
-    
-    // Initialize LLM connection - SINGLE TEST ONLY
-    logger.info('🤖 Initializing LLM connection (ONE-TIME TEST)...');
-    await LLMAgent.getInstance().initialize();
-    
-    logger.info('✅ All services initialized successfully');
+    // Services have been simplified - no external dependencies needed
+    logger.info('✅ Services initialized successfully');
     return true;
     
   } catch (error) {
