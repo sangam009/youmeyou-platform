@@ -22,6 +22,7 @@ import {
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { getWorkspaces } from '@/lib/dashboardApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Message types
 interface ChatMessage {
@@ -156,6 +157,7 @@ const componentLibrary = [
 function DesignCanvasPage() {
   // Get workspace context
   const { activeWorkspace, setActiveWorkspace } = useContext(WorkspaceContext);
+  const { user } = useAuth();
   
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -407,71 +409,101 @@ function DesignCanvasPage() {
         isStreaming: true
       } as ChatMessage]);
 
-      // Use askAgent with proper request structure
-      const cleanup = await askAgent({
-        content: chatInput,
-        canvasState: {
-          nodes,
-          edges
-        },
-        component: agentContext
-      }, {
-        onMessage: (data: StreamingData) => {
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId
-              ? {
-                  ...msg,
-                  content: msg.content + (data.content || ''),
-                  actions: data.actions || msg.actions
-                }
-              : msg
-          ));
-        },
-        onError: (error: Error) => {
-          logger.error('❌ Streaming chat error:', error);
-          
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId
-              ? {
-                  ...msg,
-                  content: "I'm having trouble connecting to my AI brain right now. Could you try again?",
-                  isStreaming: false,
-                  hasError: true
-                }
-              : msg
-          ));
-          setIsAgentTyping(false);
-        },
-        onComplete: (result: StreamingResult) => {
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId
-              ? { 
-                  ...msg, 
-                  isStreaming: false,
-                  actions: result.actions || msg.actions
-                }
-              : msg
-          ));
-          setIsAgentTyping(false);
+      // Use new simple chat streaming API
+      try {
+        const response = await fetch('/api/simple-chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: chatInput,
+            canvasId: activeWorkspace?.id,
+            userId: user?.uid || 'anonymous'
+          })
+        });
 
-          logger.info('✅ Chat streaming completed', {
-            messageId: streamingMessageId,
-            hasActions: result.actions?.length ?? 0
-          });
-        },
-        onProgress: (progress: number) => {
-          logger.debug('📊 Chat streaming progress:', { progress });
-        },
-        onCanvasUpdate: (canvasData: CanvasData) => {
-          if (canvasData.nodes) setNodes(canvasData.nodes);
-          if (canvasData.edges) setEdges(canvasData.edges);
+        if (!response.body) throw new Error('No response body');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let actions: any[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+                // Handle different event types
+                if (data.type === 'text') {
+                  fullContent += data.content;
+                  setChatMessages(prev => prev.map(msg =>
+                    msg.id === streamingMessageId
+                      ? {
+                          ...msg,
+                          content: msg.content + (data.content || ''),
+                          actions: data.actions || msg.actions
+                        }
+                      : msg
+                  ));
+                } else if (data.type === 'action_executed') {
+                  actions.push(data.action);
+                  if (data.action) {
+                    // Optionally process canvas update here
+                    if (data.action.type === 'canvas_update' && data.action.data) {
+                      if (data.action.data.nodes) setNodes(data.action.data.nodes);
+                      if (data.action.data.edges) setEdges(data.action.data.edges);
+                    }
+                  }
+                } else if (data.type === 'complete') {
+                  setChatMessages(prev => prev.map(msg =>
+                    msg.id === streamingMessageId
+                      ? {
+                          ...msg,
+                          isStreaming: false,
+                          actions: actions.length > 0 ? actions : msg.actions
+                        }
+                      : msg
+                  ));
+                  setIsAgentTyping(false);
+                } else if (data.type === 'error') {
+                  setChatMessages(prev => prev.map(msg =>
+                    msg.id === streamingMessageId
+                      ? {
+                          ...msg,
+                          content: "I'm having trouble connecting to my AI brain right now. Could you try again?",
+                          isStreaming: false,
+                          hasError: true
+                        }
+                      : msg
+                  ));
+                  setIsAgentTyping(false);
+                }
+              } catch (e) {
+                // Ignore parse errors for now
+              }
+            }
+          }
         }
-      });
+      } catch (error) {
+        logger.error('❌ Streaming chat error:', error);
+        setChatMessages(prev => prev.map(msg =>
+          msg.id === streamingMessageId
+            ? {
+                ...msg,
+                content: "I'm having trouble connecting to my AI brain right now. Could you try again?",
+                isStreaming: false,
+                hasError: true
+              }
+            : msg
+        ));
+        setIsAgentTyping(false);
+      }
 
-      // Cleanup on unmount
-      return () => {
-        cleanup();
-      };
+      // Cleanup on unmount (no-op for fetch streaming)
+      return () => {};
       
     } catch (error) {
       logger.error('❌ Chat error:', error);
@@ -487,7 +519,7 @@ function DesignCanvasPage() {
       setChatMessages(prev => [...prev, fallbackMessage]);
       setIsAgentTyping(false);
     }
-  }, [chatInput, isAgentTyping, agentContext, nodes, edges, activeWorkspace?.id]);
+  }, [chatInput, isAgentTyping, agentContext, nodes, edges, activeWorkspace?.id, user?.uid]);
 
   const handleChatKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
