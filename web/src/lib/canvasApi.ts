@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { A2AStreamingService } from './a2aStreaming';
 import { config } from '../config';
 
 // Determine the base URL based on the current hostname
@@ -25,8 +24,77 @@ const api = axios.create({
   withCredentials: true
 });
 
-// Initialize A2A streaming service
-export const streamingService = new A2AStreamingService();
+// Simple chat streaming service
+export class SimpleChatStreamingService {
+  async startStreamingExecution(task: any) {
+    // This is now handled by the simple chat API
+    console.warn('startStreamingExecution is deprecated, use simple chat API instead');
+    return null;
+  }
+
+  async startArchitectureDesign(clientId: string, prompt: string) {
+    // This is now handled by the simple chat API
+    console.warn('startArchitectureDesign is deprecated, use simple chat API instead');
+    return null;
+  }
+
+  async startSimpleChatStreaming(prompt: string, projectId: string, userId: string, options: any) {
+    const response = await fetch('/api/simple-chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        canvasId: projectId,
+        userId
+      })
+    });
+
+    if (!response.body) throw new Error('No response body');
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    const processStream = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'message' && options.onMessage) {
+                options.onMessage(data);
+              } else if (data.type === 'error' && options.onError) {
+                options.onError(data);
+              } else if (data.type === 'complete' && options.onComplete) {
+                options.onComplete(data);
+              } else if (data.type === 'progress' && options.onProgress) {
+                options.onProgress(data.progress || 0);
+              } else if (data.type === 'action' && options.onCanvasUpdate) {
+                options.onCanvasUpdate(data);
+              }
+            } catch (e) {
+              // Ignore parsing errors
+            }
+          }
+        }
+      }
+    };
+
+    processStream();
+
+    // Return cleanup function
+    return () => {
+      reader.cancel();
+    };
+  }
+}
+
+export const streamingService = new SimpleChatStreamingService();
 
 // Types
 export interface AgentRequest {
@@ -185,6 +253,74 @@ async function updateCanvas(canvasId: string, data: any) {
 async function deleteCanvas(canvasId: string) {
   const response = await api.delete(getEndpoint(`/canvas/${canvasId}`));
   return response.data;
+}
+
+// Legacy askAgent function - now uses simple chat API
+export async function askAgent(request: AgentRequest) {
+  try {
+    const response = await fetch('/api/simple-chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: request.content,
+        canvasId: 'legacy-agent',
+        userId: 'legacy-user'
+      })
+    });
+
+    if (!response.body) throw new Error('No response body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let suggestions: any[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'message' && data.content) {
+              fullContent += data.content;
+            } else if (data.type === 'action' && data.action === 'suggestions') {
+              suggestions = data.data || [];
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
+      }
+    }
+
+    return {
+      data: {
+        response: {
+          content: fullContent,
+          suggestions: suggestions
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Error in askAgent:', error);
+    throw error;
+  }
+}
+
+// Legacy getAgentStatus function
+export async function getAgentStatus() {
+  // For now, return a mock status since we're using the simple chat API
+  return {
+    agents: [
+      { id: 'arch-001', name: 'Architecture Designer', status: 'active' },
+      { id: 'db-001', name: 'Database Designer', status: 'active' },
+      { id: 'api-001', name: 'API Designer', status: 'active' },
+      { id: 'sec-001', name: 'Security Analyst', status: 'active' }
+    ]
+  };
 }
 
 export default canvasApi; 

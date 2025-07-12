@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { A2AStreamingService } from '@/lib/a2aStreaming';
+import { SimpleChatStreamingService } from '@/lib/canvasApi';
 
 interface AgentInteractionPanelProps {
   canvasState: any;
@@ -107,7 +107,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
     setCurrentTask(null);
     setTaskProgress({completed: 0, total: 0});
     try {
-      const streamingService = new A2AStreamingService();
+      const streamingService = new SimpleChatStreamingService();
       const cleanup = await streamingService.startSimpleChatStreaming(
         inputValue,
         projectId,
