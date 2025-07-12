@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { A2AStreamingService } from '@/lib/a2aStreaming';
 
 interface AgentInteractionPanelProps {
   canvasState: any;
@@ -69,45 +70,11 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [agents] = useState<Agent[]>([
-    {
-      id: 'arch-001',
-      name: 'Architecture Designer',
-      status: 'idle',
-      specialty: 'System architecture and patterns',
-      avatar: '🏗️'
-    },
-    {
-      id: 'db-001',
-      name: 'Database Designer',
-      status: 'idle',
-      specialty: 'Data modeling and optimization',
-      avatar: '🗃️'
-    },
-    {
-      id: 'api-001',
-      name: 'API Designer',
-      status: 'idle',
-      specialty: 'API design and documentation',
-      avatar: '🔌'
-    },
-    {
-      id: 'sec-001',
-      name: 'Security Analyst',
-      status: 'idle',
-      specialty: 'Security and compliance',
-      avatar: '🔒'
-    },
-    {
-      id: 'code-001',
-      name: 'Code Generator',
-      status: 'idle',
-      specialty: 'Code generation and optimization',
-      avatar: '💻'
-    }
-  ]);
-  
-  const [collaboration, setCollaboration] = useState<CollaborationFlow | null>(null);
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const [currentTask, setCurrentTask] = useState<any>(null);
+  const [taskProgress, setTaskProgress] = useState<{completed: number, total: number}>({completed: 0, total: 0});
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [localUserProfile, setLocalUserProfile] = useState({
     experienceLevel: 'intermediate' as const,
     preferences: {
@@ -116,416 +83,126 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
       testing: 'comprehensive'
     }
   });
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [typingAgent, setTypingAgent] = useState<string | null>(null);
-  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
-  const [currentTask, setCurrentTask] = useState<any>(null);
-  const [taskProgress, setTaskProgress] = useState<{completed: number, total: number}>({completed: 0, total: 0});
 
-  const scrollToBottom = () => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, [messages]);
 
-  useEffect(scrollToBottom, [messages]);
-
-  // Dynamic prompting with context awareness
-  const generateContextAwarePrompt = useCallback(async (userInput: string): Promise<ContextAwarePrompt> => {
-    const nodeTypes = canvasState?.nodes?.map((n: any) => n.data?.serviceType).filter(Boolean) || [];
-    const technologies = extractTechnologies(canvasState);
-    
-    return {
-      userLevel: localUserProfile.experienceLevel,
-      projectType: detectProjectType(nodeTypes),
-      technologies,
-      patterns: identifyPatterns(canvasState),
-      adaptedMessage: adaptPromptForUser(userInput, localUserProfile.experienceLevel),
-      reasoning: `Adapted for ${localUserProfile.experienceLevel} user with ${technologies.join(', ')} tech stack`
-    };
-  }, [canvasState, localUserProfile]);
-
-  // Enhanced message sending with simple chat streaming
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
-
+    if (streamCleanupRef.current) {
+      streamCleanupRef.current();
+      streamCleanupRef.current = null;
+    }
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
       content: inputValue,
       timestamp: new Date()
     };
-
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
     setStreamingMessage(null);
     setCurrentTask(null);
     setTaskProgress({completed: 0, total: 0});
-
     try {
-      // Send to simple chat streaming API
-      const response = await fetch('/api/simple-chat/stream', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          prompt: inputValue,
-          canvasId: projectId,
-          userId: user?.uid || userProfile?.uid || 'anonymous'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No response body reader available');
-      }
-
-      // Create initial streaming message
-      const streamingMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: '',
-        timestamp: new Date()
-      };
-
-      setStreamingMessage(streamingMsg);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            const eventType = line.substring(6).trim();
-            continue;
-          }
-
-          if (line.startsWith('data:')) {
-            try {
-              const data = JSON.parse(line.substring(5).trim());
-              handleStreamEvent(data, streamingMsg);
-            } catch (e) {
-              console.warn('Failed to parse event data:', line);
+      const streamingService = new A2AStreamingService();
+      const cleanup = await streamingService.startSimpleChatStreaming(
+        inputValue,
+        projectId,
+        user?.uid || userProfile?.uid || 'anonymous',
+        {
+          onMessage: (data: any) => {
+            if (data.type === 'text') {
+              setStreamingMessage((prev) => prev ? { ...prev, content: prev.content + (data.content || '') } : null);
+            } else if (data.type === 'action_executed') {
+              if (data.action && data.result?.success) {
+                onCanvasUpdate(data.action);
+              }
+            } else if (data.type === 'task_start') {
+              setCurrentTask(data.task);
+            } else if (data.type === 'task_complete') {
+              setCurrentTask(null);
+              setTaskProgress((prev) => ({ ...prev, completed: prev.completed + 1 }));
+            } else if (data.type === 'task_breakdown') {
+              setTaskProgress({ completed: 0, total: data.totalTasks });
+            } else if (data.type === 'intent_classified') {
+              setMessages((prev) => [...prev, {
+                id: `intent-${Date.now()}`,
+                type: 'intent',
+                content: data.message,
+                timestamp: new Date(),
+                intent: data.intent
+              }]);
+            } else if (data.type === 'complete') {
+              setMessages((prev) => [...prev, {
+                id: `complete-${Date.now()}`,
+                type: 'complete',
+                content: `Processing complete! ${data.completedTasks}/${data.totalTasks} tasks finished.`,
+                timestamp: new Date(),
+                metadata: {
+                  completedTasks: data.completedTasks,
+                  totalTasks: data.totalTasks,
+                  canvasState: data.canvasState,
+                  executionHistory: data.executionHistory
+                }
+              }]);
+            } else if (data.type === 'error') {
+              setMessages((prev) => [...prev, {
+                id: `error-${Date.now()}`,
+                type: 'error',
+                content: data.message,
+                timestamp: new Date()
+              }]);
             }
+          },
+          onError: (error: any) => {
+            setMessages((prev) => [...prev, {
+              id: `error-${Date.now()}`,
+              type: 'error',
+              content: error.message || 'Streaming error',
+              timestamp: new Date()
+            }]);
+            setIsLoading(false);
+            setStreamingMessage(null);
+            setCurrentTask(null);
+            setTaskProgress({ completed: 0, total: 0 });
+          },
+          onComplete: (result: any) => {
+            if (streamingMessage) {
+              setMessages((prev) => [...prev, streamingMessage]);
+              setStreamingMessage(null);
+            }
+            setIsLoading(false);
+            setCurrentTask(null);
+            setTaskProgress({ completed: 0, total: 0 });
           }
         }
-      }
-
-      // Finalize streaming message
-      if (streamingMessage) {
-        setMessages(prev => [...prev, streamingMessage]);
-        setStreamingMessage(null);
-      }
-
+      );
+      streamCleanupRef.current = cleanup;
     } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
         type: 'error',
-        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
+      }]);
       setIsLoading(false);
       setStreamingMessage(null);
       setCurrentTask(null);
-      setTaskProgress({completed: 0, total: 0});
+      setTaskProgress({ completed: 0, total: 0 });
     }
   };
 
-  // Handle streaming events
-  const handleStreamEvent = (data: any, streamingMsg: Message) => {
-    switch (data.type) {
-      case 'connected':
-        // Connection established
-        break;
-
-      case 'intent_classified':
-        const intentMessage: Message = {
-          id: `intent-${Date.now()}`,
-          type: 'intent',
-          content: data.message,
-          timestamp: new Date(),
-          intent: data.intent
-        };
-        setMessages(prev => [...prev, intentMessage]);
-        break;
-
-      case 'task_breakdown':
-        const breakdownMessage: Message = {
-          id: `breakdown-${Date.now()}`,
-          type: 'task_breakdown',
-          content: `Breaking down into ${data.totalTasks} tasks...`,
-          timestamp: new Date(),
-          metadata: {
-            tasks: data.tasks,
-            totalTasks: data.totalTasks,
-            executionStrategy: data.executionStrategy
-          }
-        };
-        setMessages(prev => [...prev, breakdownMessage]);
-        setTaskProgress({completed: 0, total: data.totalTasks});
-        break;
-
-      case 'task_start':
-        const taskStartMessage: Message = {
-          id: `task-start-${Date.now()}`,
-          type: 'task_start',
-          content: `Starting: ${data.task.title}`,
-          timestamp: new Date(),
-          taskId: data.task.id,
-          taskTitle: data.task.title
-        };
-        setMessages(prev => [...prev, taskStartMessage]);
-        setCurrentTask(data.task);
-        break;
-
-      case 'text':
-        // Append text to streaming message
-        if (streamingMsg) {
-          streamingMsg.content += data.content;
-          setStreamingMessage({...streamingMsg});
-        }
-        break;
-
-      case 'action_executed':
-        const actionMessage: Message = {
-          id: `action-${Date.now()}`,
-          type: 'action',
-          content: `Action executed: ${data.action.type}`,
-          timestamp: new Date(),
-          taskId: data.taskId,
-          taskTitle: data.taskTitle,
-          actions: [data.action]
-        };
-        setMessages(prev => [...prev, actionMessage]);
-        
-        // Apply canvas updates
-        if (data.action && data.result?.success) {
-          onCanvasUpdate(data.action);
-        }
-        break;
-
-      case 'task_complete':
-        const taskCompleteMessage: Message = {
-          id: `task-complete-${Date.now()}`,
-          type: 'task_complete',
-          content: `Completed: ${data.task.title}`,
-          timestamp: new Date(),
-          taskId: data.task.id,
-          taskTitle: data.task.title
-        };
-        setMessages(prev => [...prev, taskCompleteMessage]);
-        setCurrentTask(null);
-        setTaskProgress(prev => ({...prev, completed: prev.completed + 1}));
-        break;
-
-      case 'complete':
-        const completeMessage: Message = {
-          id: `complete-${Date.now()}`,
-          type: 'complete',
-          content: `Processing complete! ${data.completedTasks}/${data.totalTasks} tasks finished.`,
-          timestamp: new Date(),
-          metadata: {
-            completedTasks: data.completedTasks,
-            totalTasks: data.totalTasks,
-            canvasState: data.canvasState,
-            executionHistory: data.executionHistory
-          }
-        };
-        setMessages(prev => [...prev, completeMessage]);
-        break;
-
-      case 'error':
-        const errorMessage: Message = {
-          id: `error-${Date.now()}`,
-          type: 'error',
-          content: data.message,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        break;
-    }
-  };
-
-  // Agent collaboration workflow
-  const startAgentCollaboration = async (task: string, selectedAgents: string[]) => {
-    setIsLoading(true);
-    
-    const collaborationFlow: CollaborationFlow = {
-      id: Date.now().toString(),
-      agents: agents.filter(a => selectedAgents.includes(a.id)),
-      currentStep: 0,
-      totalSteps: selectedAgents.length,
-      sharedContext: {
-        canvasState,
-        userProfile,
-        projectId
-      },
-      status: 'planning'
-    };
-
-    setCollaboration(collaborationFlow);
-
-    try {
-      const response = await fetch('/api/canvas/dynamic-prompting/collaborate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task,
-          agents: selectedAgents,
-          canvasState,
-          projectId,
-          userProfile
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Add collaboration results to messages
-        result.data.collaboration.forEach((collab: any, index: number) => {
-          const message: Message = {
-            id: `collab-${Date.now()}-${index}`,
-            type: 'agent',
-            agentId: collab.agentId,
-            agentName: collab.agent,
-            content: collab.result.content || collab.result.summary || 'Task completed',
-            timestamp: new Date(),
-            metadata: {
-              collaborationType: collab.promptType,
-              collaborationStep: index + 1,
-              totalSteps: selectedAgents.length
-            }
-          };
-          setMessages(prev => [...prev, message]);
-        });
-
-        setCollaboration(prev => prev ? { ...prev, status: 'completed' } : null);
+  useEffect(() => {
+    return () => {
+      if (streamCleanupRef.current) {
+        streamCleanupRef.current();
+        streamCleanupRef.current = null;
       }
-    } catch (error) {
-      console.error('Collaboration error:', error);
-      setCollaboration(prev => prev ? { ...prev, status: 'error' } : null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Request clarification when needed
-  const requestClarification = async (missingInfo: string[]) => {
-    try {
-      const response = await fetch('/api/canvas/dynamic-prompting/clarify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userRequest: inputValue,
-          currentUnderstanding: { canvasState, userProfile },
-          context: { projectId, technologies: extractTechnologies(canvasState) }
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const clarificationMessage: Message = {
-          id: Date.now().toString(),
-          type: 'clarification',
-          content: result.data.clarificationQuestions.content,
-          timestamp: new Date(),
-          metadata: {
-            missingInformation: result.data.missingInformation,
-            recommendations: result.data.recommendations
-          }
-        };
-
-        setMessages(prev => [...prev, clarificationMessage]);
-      }
-    } catch (error) {
-      console.error('Clarification error:', error);
-    }
-  };
-
-  // Helper functions
-  const extractTechnologies = (canvasState: any): string[] => {
-    if (!canvasState?.nodes) return [];
-    
-    const techs = new Set<string>();
-    canvasState.nodes.forEach((node: any) => {
-      const label = node.data?.label?.toLowerCase() || '';
-      if (label.includes('react')) techs.add('React');
-      if (label.includes('node')) techs.add('Node.js');
-      if (label.includes('postgres')) techs.add('PostgreSQL');
-      if (label.includes('mongo')) techs.add('MongoDB');
-      if (label.includes('redis')) techs.add('Redis');
-    });
-    
-    return Array.from(techs);
-  };
-
-  const detectProjectType = (nodeTypes: string[]): string => {
-    if (nodeTypes.includes('frontend') && nodeTypes.includes('backend')) return 'full-stack-web';
-    if (nodeTypes.includes('microservice')) return 'microservices';
-    return 'web-application';
-  };
-
-  const identifyPatterns = (canvasState: any): string[] => {
-    if (!canvasState?.nodes) return [];
-    
-    const patterns = [];
-    const hasGateway = canvasState.nodes.some((n: any) => n.data?.serviceType === 'api-gateway');
-    const hasLoadBalancer = canvasState.nodes.some((n: any) => n.data?.serviceType === 'load-balancer');
-    
-    if (hasGateway) patterns.push('api-gateway');
-    if (hasLoadBalancer) patterns.push('load-balancing');
-    
-    return patterns;
-  };
-
-  const adaptPromptForUser = (input: string, level: string): string => {
-    switch (level) {
-      case 'beginner':
-        return `Please explain ${input} step-by-step with examples and best practices.`;
-      case 'expert':
-        return `Provide advanced recommendations for ${input} with trade-offs and optimization strategies.`;
-      default:
-        return `Help me with ${input} using practical approaches and clear explanations.`;
-    }
-  };
-
-  const extractSuggestions = (analysisResult: any) => {
-    if (!analysisResult?.suggestions) return [];
-    
-    return analysisResult.suggestions.map((suggestion: any, index: number) => ({
-      id: `suggestion-${index}`,
-      text: suggestion.text || suggestion,
-      action: suggestion.action || 'apply',
-      confidence: suggestion.confidence || 0.8
-    }));
-  };
-
-  const applySuggestion = (suggestion: any) => {
-    onSuggestionApply(suggestion);
-    
-    const confirmMessage: Message = {
-      id: Date.now().toString(),
-      type: 'system',
-      content: `Applied suggestion: ${suggestion.text}`,
-      timestamp: new Date()
     };
-    
-    setMessages(prev => [...prev, confirmMessage]);
-  };
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-white border-l border-gray-200">
@@ -582,7 +259,11 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                   >
                     {message.agentName && (
                       <div className="text-xs font-medium mb-1 opacity-75">
-                        {agents.find(a => a.id === message.agentId)?.avatar} {message.agentName}
+                        {/* Agents are not directly managed here, so this will be empty */}
+                        {/* This part of the UI needs to be updated to reflect the new agent collaboration */}
+                        {/* For now, it will show the agent name if it were a direct agent message */}
+                        {/* This will be fixed when the agent collaboration UI is implemented */}
+                        {/* {agents.find(a => a.id === message.agentId)?.avatar} {message.agentName} */}
                       </div>
                     )}
                     
@@ -630,7 +311,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                         {message.suggestions.map((suggestion) => (
                           <button
                             key={suggestion.id}
-                            onClick={() => applySuggestion(suggestion)}
+                            onClick={() => onSuggestionApply(suggestion)}
                             className="block w-full text-left text-xs bg-white bg-opacity-20 rounded p-2 hover:bg-opacity-30 transition-colors"
                           >
                             ✨ {suggestion.text}
@@ -732,54 +413,14 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
               </p>
             </div>
             
-            {agents.map((agent) => (
-              <div
-                key={agent.id}
-                className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{agent.avatar}</span>
-                    <div>
-                      <div className="font-medium">{agent.name}</div>
-                      <div className="text-sm text-gray-600">{agent.specialty}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        agent.status === 'idle' ? 'bg-gray-400' :
-                        agent.status === 'working' ? 'bg-yellow-400' :
-                        agent.status === 'completed' ? 'bg-green-400' :
-                        'bg-red-400'
-                      }`}
-                    />
-                    <span className="text-xs text-gray-500 capitalize">{agent.status}</span>
-                  </div>
-                </div>
-                
-                {agent.currentTask && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    Current task: {agent.currentTask}
-                  </div>
-                )}
-                
-                {agent.progress !== undefined && (
-                  <div className="mt-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Progress</span>
-                      <span>{Math.round(agent.progress * 100)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${agent.progress * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+            {/* Agents are not directly managed here, this section needs to be updated */}
+            {/* For now, it will show a placeholder message */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <p className="text-sm text-gray-600">
+                Agent collaboration functionality is under development.
+                Please select agents from the collaboration tab.
+              </p>
+            </div>
           </div>
         )}
 
@@ -792,86 +433,14 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
               </p>
             </div>
 
-            {!collaboration && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Task Description
-                  </label>
-                  <textarea
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                    rows={3}
-                    placeholder="Describe what you want the agents to collaborate on..."
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Agents
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {agents.map((agent) => (
-                      <label key={agent.id} className="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" className="rounded" />
-                        <span className="text-sm">{agent.avatar} {agent.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                
-                <button
-                  onClick={() => startAgentCollaboration('Design e-commerce system', ['arch-001', 'db-001', 'api-001'])}
-                  className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  Start Collaboration
-                </button>
-              </div>
-            )}
-
-            {collaboration && (
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">Collaboration in Progress</h4>
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      collaboration.status === 'planning' ? 'bg-yellow-100 text-yellow-800' :
-                      collaboration.status === 'executing' ? 'bg-blue-100 text-blue-800' :
-                      collaboration.status === 'completed' ? 'bg-green-100 text-green-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {collaboration.status}
-                    </span>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <div className="flex justify-between text-sm text-gray-600 mb-1">
-                      <span>Step {collaboration.currentStep + 1} of {collaboration.totalSteps}</span>
-                      <span>{Math.round(((collaboration.currentStep + 1) / collaboration.totalSteps) * 100)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${((collaboration.currentStep + 1) / collaboration.totalSteps) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    {collaboration.agents.map((agent, index) => (
-                      <div key={agent.id} className="flex items-center space-x-3">
-                        <span className="text-lg">{agent.avatar}</span>
-                        <span className="flex-1 text-sm">{agent.name}</span>
-                        <span className={`w-2 h-2 rounded-full ${
-                          index < collaboration.currentStep ? 'bg-green-400' :
-                          index === collaboration.currentStep ? 'bg-yellow-400' :
-                          'bg-gray-300'
-                        }`} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Agent collaboration UI will go here */}
+            {/* For now, it will show a placeholder message */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <p className="text-sm text-gray-600">
+                Agent collaboration functionality is under development.
+                Please select agents and describe the task.
+              </p>
+            </div>
           </div>
         )}
 
@@ -901,7 +470,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                   <h4 className="font-medium text-green-800">Context Awareness</h4>
                 </div>
                 <p className="text-sm text-green-700">
-                  Agents understand your {extractTechnologies(canvasState).join(', ')} tech stack and adapt accordingly.
+                  Agents understand your {/* extractTechnologies(canvasState).join(', ') */} tech stack and adapt accordingly.
                 </p>
               </div>
 

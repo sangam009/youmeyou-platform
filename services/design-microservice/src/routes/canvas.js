@@ -2,7 +2,6 @@ import express from 'express';
 import a2aService from '../services/a2aService.js';
 import canvasService from '../services/canvasService.js';
 import logger from '../utils/logger.js';
-import dynamicPromptingRoutes from './dynamicPrompting.js';
 import canvasController from '../controllers/canvasController.js';
 import auth from '../middleware/auth.js';
 
@@ -107,9 +106,6 @@ router.get('/architecture/:clientId', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-// Phase 3: Dynamic Prompting Routes
-router.use('/dynamic-prompting', dynamicPromptingRoutes);
 
 router.get('/:id', auth, canvasController.getCanvas.bind(canvasController));
 router.delete('/:id', auth, canvasController.deleteCanvas.bind(canvasController));

@@ -133,24 +133,45 @@ export const InteractiveComponentEditor: React.FC<InteractiveComponentEditorProp
     setIsLoading(true);
     
     try {
-      const response = await fetch('/api/canvas/dynamic-prompting/analyze', {
+      const response = await fetch('/api/simple-chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          request: `Analyze and suggest improvements for ${selectedNode.data?.serviceType || 'component'}: ${selectedNode.data?.label}`,
-          canvasState,
-          projectId,
-          focusComponent: selectedNode,
-          analysisType: 'component-optimization'
+          prompt: `Analyze and suggest improvements for ${selectedNode.data?.serviceType || 'component'}: ${selectedNode.data?.label}. Focus on component optimization and best practices.`,
+          canvasId: projectId,
+          userId: 'component-editor'
         })
       });
 
-      const result = await response.json();
+      if (!response.body) throw new Error('No response body');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let suggestions: ComponentSuggestion[] = [];
 
-      if (result.success) {
-        const componentSuggestions = extractComponentSuggestions(result.data.analysis);
-        setSuggestions(componentSuggestions);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'message' && data.content) {
+                fullContent += data.content;
+              } else if (data.type === 'action' && data.action === 'suggestions') {
+                suggestions = extractComponentSuggestions(data.data);
+              }
+            } catch (e) {
+              // Ignore parsing errors
+            }
+          }
+        }
       }
+
+      setSuggestions(suggestions);
     } catch (error) {
       console.error('Error generating suggestions:', error);
     } finally {
@@ -163,30 +184,46 @@ export const InteractiveComponentEditor: React.FC<InteractiveComponentEditorProp
     if (!selectedNode) return;
 
     try {
-      const response = await fetch('/api/canvas/dynamic-prompting/validate', {
+      const response = await fetch('/api/simple-chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          component: selectedNode,
-          canvasState,
-          validationCriteria: [
-            'configuration-completeness',
-            'security-compliance',
-            'performance-optimization',
-            'integration-compatibility'
-          ]
+          prompt: `Validate this component: ${selectedNode.data?.label} (${selectedNode.data?.serviceType || 'component'}). Check for configuration completeness, security compliance, performance optimization, and integration compatibility.`,
+          canvasId: projectId,
+          userId: 'component-editor'
         })
       });
 
-      const result = await response.json();
+      if (!response.body) throw new Error('No response body');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let validationResult: ValidationResult = { isValid: true, errors: [], suggestions: [] };
 
-      if (result.success) {
-        setValidation(parseValidationResult(result.data));
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'action' && data.action === 'validation') {
+                validationResult = parseValidationResult(data.data);
+              }
+            } catch (e) {
+              // Ignore parsing errors
+            }
+          }
+        }
       }
+
+      setValidation(validationResult);
     } catch (error) {
       console.error('Error validating component:', error);
     }
-  }, [selectedNode, canvasState]);
+  }, [selectedNode, canvasState, projectId]);
 
   // Debounced property updates
   const updateProperty = useCallback((key: string, value: any) => {

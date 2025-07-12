@@ -160,69 +160,6 @@ interface ArchitectureRequest {
   clientId: string;
 }
 
-// Agent functions
-export const askAgent = async (request: AgentRequest, options: StreamingOptions = {}) => {
-  try {
-    console.log('🤖 Starting streaming agent request:', request);
-    
-    // Validate request parameters
-    if (!request.content) {
-      throw new Error('Content is required for agent request');
-    }
-
-    // Use A2A streaming service
-    return streamingService.startStreamingExecution({
-      id: Date.now().toString(),
-      prompt: request.content,
-      type: 'AGENT_CHAT',
-      canvasState: request.canvasState,
-      component: request.component,
-      streamingEnabled: true
-    }, options);
-
-  } catch (error) {
-    console.error('❌ Error setting up agent streaming:', error);
-    throw error;
-  }
-};
-
-export const getAgentStatus = async () => {
-  try {
-    const response = await api.get(getEndpoint('/agents/status'));
-    return response.data;
-  } catch (error) {
-    console.error('Error getting agent status:', error);
-    throw error;
-  }
-};
-
-export const chatWithAgent = async (message: string, canvasState?: any, component?: any) => {
-  try {
-    const response = await api.post(getEndpoint('/agents/chat'), {
-      message,
-      canvasState,
-      component
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error chatting with agent:', error);
-    throw error;
-  }
-};
-
-// Replace WebSocket streaming with A2A SDK streaming
-export const startStreamingExecution = (executionId: string, options: StreamingOptions = {}) => {
-  return streamingService.startStreamingExecution({
-    id: executionId,
-    prompt: 'Execute streaming task',
-    type: 'EXECUTION'
-  }, options);
-};
-
-export const startArchitectureDesign = (canvasId: string, requirements: string, options: StreamingOptions = {}) => {
-  return streamingService.startArchitectureDesign(canvasId, requirements, options);
-};
-
 // Get canvas by ID
 async function getCanvas(canvasId: string) {
   const response = await api.get(getEndpoint(`/canvas/${canvasId}`));

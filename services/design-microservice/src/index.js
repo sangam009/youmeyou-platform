@@ -16,7 +16,6 @@ import projectRoutes from './routes/projects.js';
 import canvasRoutes from './routes/canvas.js';
 import agentRoutes from './routes/agents.js';
 import templateRoutes from './routes/templates.js';
-import dynamicPromptingRoutes from './routes/dynamicPrompting.js';
 import simpleChatRoutes from './routes/simpleChat.js';
 
 // Import middleware
@@ -187,7 +186,6 @@ app.use('/api/projects', authMiddleware, projectRoutes);
 app.use('/api/canvas', authMiddleware, canvasRoutes);
 app.use('/api/agents', authMiddleware, agentRoutes);
 app.use('/api/templates', authMiddleware, templateRoutes);
-app.use('/api/dynamic-prompting', authMiddleware, dynamicPromptingRoutes);
 app.use('/api/simple-chat', authMiddleware, simpleChatRoutes);
 
 // Routes for nginx proxy (without /api prefix)
@@ -196,7 +194,6 @@ app.use('/projects', authMiddleware, projectRoutes);
 app.use('/canvas', authMiddleware, canvasRoutes);
 app.use('/agents', authMiddleware, agentRoutes);
 app.use('/templates', authMiddleware, templateRoutes);
-app.use('/dynamic-prompting', authMiddleware, dynamicPromptingRoutes);
 app.use('/simple-chat', authMiddleware, simpleChatRoutes);
 
 // Error handling middleware

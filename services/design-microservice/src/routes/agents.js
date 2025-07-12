@@ -5,13 +5,9 @@ const router = express.Router();
 
 // Enhanced A2A endpoints
 router.post('/task', agentController.routeTask);
-router.post('/chat', agentController.chat);
 router.post('/generate', agentController.generateCode);
 router.post('/analyze', agentController.analyzeCode);
 router.get('/status', agentController.getAgentStatus);
-
-// Legacy endpoint (keeping for backward compatibility)
-router.post('/ask', agentController.askAgent);
 
 // Canvas analysis and suggestions
 router.post('/analyze-canvas', agentController.analyzeCanvas);
