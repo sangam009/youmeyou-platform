@@ -22,7 +22,7 @@ interface Agent {
 
 interface Message {
   id: string;
-  type: 'user' | 'agent' | 'system' | 'clarification';
+  type: 'user' | 'agent' | 'system' | 'clarification' | 'intent' | 'task_breakdown' | 'task_start' | 'task_complete' | 'action' | 'complete' | 'error';
   agentId?: string;
   agentName?: string;
   content: string;
@@ -34,6 +34,10 @@ interface Message {
     action: string;
     confidence: number;
   }>;
+  taskId?: string;
+  taskTitle?: string;
+  intent?: string;
+  actions?: any[];
 }
 
 interface ContextAwarePrompt {
@@ -60,7 +64,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
   onCanvasUpdate,
   onSuggestionApply
 }) => {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'chat' | 'agents' | 'collaboration' | 'insights'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -104,7 +108,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
   ]);
   
   const [collaboration, setCollaboration] = useState<CollaborationFlow | null>(null);
-  const [userProfile, setUserProfile] = useState({
+  const [localUserProfile, setLocalUserProfile] = useState({
     experienceLevel: 'intermediate' as const,
     preferences: {
       codeStyle: 'modern',
@@ -115,6 +119,9 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const [currentTask, setCurrentTask] = useState<any>(null);
+  const [taskProgress, setTaskProgress] = useState<{completed: number, total: number}>({completed: 0, total: 0});
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -128,16 +135,16 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
     const technologies = extractTechnologies(canvasState);
     
     return {
-      userLevel: userProfile.experienceLevel,
+      userLevel: localUserProfile.experienceLevel,
       projectType: detectProjectType(nodeTypes),
       technologies,
       patterns: identifyPatterns(canvasState),
-      adaptedMessage: adaptPromptForUser(userInput, userProfile.experienceLevel),
-      reasoning: `Adapted for ${userProfile.experienceLevel} user with ${technologies.join(', ')} tech stack`
+      adaptedMessage: adaptPromptForUser(userInput, localUserProfile.experienceLevel),
+      reasoning: `Adapted for ${localUserProfile.experienceLevel} user with ${technologies.join(', ')} tech stack`
     };
-  }, [canvasState, userProfile]);
+  }, [canvasState, localUserProfile]);
 
-  // Enhanced message sending with dynamic prompting
+  // Enhanced message sending with simple chat streaming
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -151,59 +158,204 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
+    setStreamingMessage(null);
+    setCurrentTask(null);
+    setTaskProgress({completed: 0, total: 0});
 
     try {
-      // Generate context-aware prompt
-      const contextPrompt = await generateContextAwarePrompt(inputValue);
-      
-      // Send to dynamic prompting API
-      const response = await fetch('/api/canvas/dynamic-prompting/analyze', {
+      // Send to simple chat streaming API
+      const response = await fetch('/api/simple-chat/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
-          request: inputValue,
-          canvasState,
-          userProfile,
-          projectId,
-          contextPrompt
+          prompt: inputValue,
+          canvasId: projectId,
+          userId: user?.uid || userProfile?.uid || 'anonymous'
         })
       });
 
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-      if (result.success) {
-        const agentMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          type: 'agent',
-          agentId: result.data.promptingInfo.agentUsed,
-          agentName: result.data.promptingInfo.agentUsed,
-          content: result.data.analysis.content || result.data.analysis.summary,
-          timestamp: new Date(),
-          metadata: {
-            promptingInfo: result.data.promptingInfo,
-            contextAdaptation: contextPrompt
-          },
-          suggestions: extractSuggestions(result.data.analysis)
-        };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-        setMessages(prev => [...prev, agentMessage]);
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
 
-        // Apply automatic canvas updates if suggested
-        if (result.data.analysis.actions) {
-          onCanvasUpdate(result.data.analysis.actions);
+      // Create initial streaming message
+      const streamingMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'agent',
+        content: '',
+        timestamp: new Date()
+      };
+
+      setStreamingMessage(streamingMsg);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            const eventType = line.substring(6).trim();
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            try {
+              const data = JSON.parse(line.substring(5).trim());
+              handleStreamEvent(data, streamingMsg);
+            } catch (e) {
+              console.warn('Failed to parse event data:', line);
+            }
+          }
         }
       }
+
+      // Finalize streaming message
+      if (streamingMessage) {
+        setMessages(prev => [...prev, streamingMessage]);
+        setStreamingMessage(null);
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        type: 'system',
-        content: 'Sorry, I encountered an error. Please try again.',
+        type: 'error',
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setStreamingMessage(null);
+      setCurrentTask(null);
+      setTaskProgress({completed: 0, total: 0});
+    }
+  };
+
+  // Handle streaming events
+  const handleStreamEvent = (data: any, streamingMsg: Message) => {
+    switch (data.type) {
+      case 'connected':
+        // Connection established
+        break;
+
+      case 'intent_classified':
+        const intentMessage: Message = {
+          id: `intent-${Date.now()}`,
+          type: 'intent',
+          content: data.message,
+          timestamp: new Date(),
+          intent: data.intent
+        };
+        setMessages(prev => [...prev, intentMessage]);
+        break;
+
+      case 'task_breakdown':
+        const breakdownMessage: Message = {
+          id: `breakdown-${Date.now()}`,
+          type: 'task_breakdown',
+          content: `Breaking down into ${data.totalTasks} tasks...`,
+          timestamp: new Date(),
+          metadata: {
+            tasks: data.tasks,
+            totalTasks: data.totalTasks,
+            executionStrategy: data.executionStrategy
+          }
+        };
+        setMessages(prev => [...prev, breakdownMessage]);
+        setTaskProgress({completed: 0, total: data.totalTasks});
+        break;
+
+      case 'task_start':
+        const taskStartMessage: Message = {
+          id: `task-start-${Date.now()}`,
+          type: 'task_start',
+          content: `Starting: ${data.task.title}`,
+          timestamp: new Date(),
+          taskId: data.task.id,
+          taskTitle: data.task.title
+        };
+        setMessages(prev => [...prev, taskStartMessage]);
+        setCurrentTask(data.task);
+        break;
+
+      case 'text':
+        // Append text to streaming message
+        if (streamingMsg) {
+          streamingMsg.content += data.content;
+          setStreamingMessage({...streamingMsg});
+        }
+        break;
+
+      case 'action_executed':
+        const actionMessage: Message = {
+          id: `action-${Date.now()}`,
+          type: 'action',
+          content: `Action executed: ${data.action.type}`,
+          timestamp: new Date(),
+          taskId: data.taskId,
+          taskTitle: data.taskTitle,
+          actions: [data.action]
+        };
+        setMessages(prev => [...prev, actionMessage]);
+        
+        // Apply canvas updates
+        if (data.action && data.result?.success) {
+          onCanvasUpdate(data.action);
+        }
+        break;
+
+      case 'task_complete':
+        const taskCompleteMessage: Message = {
+          id: `task-complete-${Date.now()}`,
+          type: 'task_complete',
+          content: `Completed: ${data.task.title}`,
+          timestamp: new Date(),
+          taskId: data.task.id,
+          taskTitle: data.task.title
+        };
+        setMessages(prev => [...prev, taskCompleteMessage]);
+        setCurrentTask(null);
+        setTaskProgress(prev => ({...prev, completed: prev.completed + 1}));
+        break;
+
+      case 'complete':
+        const completeMessage: Message = {
+          id: `complete-${Date.now()}`,
+          type: 'complete',
+          content: `Processing complete! ${data.completedTasks}/${data.totalTasks} tasks finished.`,
+          timestamp: new Date(),
+          metadata: {
+            completedTasks: data.completedTasks,
+            totalTasks: data.totalTasks,
+            canvasState: data.canvasState,
+            executionHistory: data.executionHistory
+          }
+        };
+        setMessages(prev => [...prev, completeMessage]);
+        break;
+
+      case 'error':
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          type: 'error',
+          content: data.message,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        break;
     }
   };
 
@@ -411,6 +563,20 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                         ? 'bg-blue-600 text-white'
                         : message.type === 'clarification'
                         ? 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+                        : message.type === 'intent'
+                        ? 'bg-green-50 border border-green-200 text-green-800'
+                        : message.type === 'task_breakdown'
+                        ? 'bg-blue-50 border border-blue-200 text-blue-800'
+                        : message.type === 'task_start'
+                        ? 'bg-purple-50 border border-purple-200 text-purple-800'
+                        : message.type === 'task_complete'
+                        ? 'bg-green-50 border border-green-200 text-green-800'
+                        : message.type === 'action'
+                        ? 'bg-orange-50 border border-orange-200 text-orange-800'
+                        : message.type === 'complete'
+                        ? 'bg-indigo-50 border border-indigo-200 text-indigo-800'
+                        : message.type === 'error'
+                        ? 'bg-red-50 border border-red-200 text-red-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}
                   >
@@ -419,7 +585,36 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                         {agents.find(a => a.id === message.agentId)?.avatar} {message.agentName}
                       </div>
                     )}
+                    
+                    {/* Task info for task-related messages */}
+                    {message.taskTitle && (
+                      <div className="text-xs font-medium mb-1 opacity-75">
+                        📋 {message.taskTitle}
+                      </div>
+                    )}
+                    
                     <div className="whitespace-pre-wrap">{message.content}</div>
+                    
+                    {/* Intent info */}
+                    {message.intent && (
+                      <div className="mt-2 text-xs opacity-75 border-t pt-2">
+                        🎯 Intent: {message.intent}
+                      </div>
+                    )}
+                    
+                    {/* Task breakdown info */}
+                    {message.metadata?.tasks && (
+                      <div className="mt-2 text-xs opacity-75 border-t pt-2">
+                        📋 {message.metadata.totalTasks} tasks planned
+                      </div>
+                    )}
+                    
+                    {/* Action info */}
+                    {message.actions && message.actions.length > 0 && (
+                      <div className="mt-2 text-xs opacity-75 border-t pt-2">
+                        ⚡ Action executed: {message.actions[0].type}
+                      </div>
+                    )}
                     
                     {/* Context adaptation info */}
                     {message.metadata?.contextAdaptation && (
@@ -454,15 +649,43 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                 </div>
               ))}
               
+              {/* Streaming message */}
+              {streamingMessage && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-lg p-3 bg-gray-100 text-gray-800">
+                    <div className="whitespace-pre-wrap">{streamingMessage.content}</div>
+                    <div className="flex items-center space-x-2 mt-2">
+                      <div className="animate-pulse w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <div className="animate-pulse w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <div className="animate-pulse w-2 h-2 bg-blue-600 rounded-full"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-gray-100 rounded-lg p-3">
                     <div className="flex items-center space-x-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                       <span className="text-sm text-gray-600">
-                        {typingAgent ? `${typingAgent} is thinking...` : 'Processing with dynamic prompting...'}
+                        {currentTask ? `Processing: ${currentTask.title}` : 'Processing with AI...'}
                       </span>
                     </div>
+                    {taskProgress.total > 0 && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Progress</span>
+                          <span>{taskProgress.completed}/{taskProgress.total}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${(taskProgress.completed / taskProgress.total) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -478,7 +701,7 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Ask agents about your architecture..."
+                  placeholder="Ask me anything about your architecture or just chat..."
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
                   disabled={isLoading}
                 />
@@ -492,9 +715,9 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
               </div>
               
               <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
-                <span>💡 Dynamic prompting enabled</span>
-                <span>👤 Level: {userProfile.experienceLevel}</span>
-                <span>🎯 Context-aware responses</span>
+                <span>🚀 Simple Chat enabled</span>
+                <span>👤 Level: {localUserProfile.experienceLevel}</span>
+                <span>🎯 Intent-aware processing</span>
               </div>
             </div>
           </div>
@@ -712,8 +935,8 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                     Experience Level
                   </label>
                   <select
-                    value={userProfile.experienceLevel}
-                    onChange={(e) => setUserProfile(prev => ({
+                    value={localUserProfile.experienceLevel}
+                    onChange={(e) => setLocalUserProfile(prev => ({
                       ...prev,
                       experienceLevel: e.target.value as any
                     }))}
@@ -730,8 +953,8 @@ export const AgentInteractionPanel: React.FC<AgentInteractionPanelProps> = ({
                     Preferred Architecture
                   </label>
                   <select
-                    value={userProfile.preferences.architecture}
-                    onChange={(e) => setUserProfile(prev => ({
+                    value={localUserProfile.preferences.architecture}
+                    onChange={(e) => setLocalUserProfile(prev => ({
                       ...prev,
                       preferences: { ...prev.preferences, architecture: e.target.value }
                     }))}
